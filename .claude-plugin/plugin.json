@@ -1,0 +1,25 @@
+{
+  "name": "ceilidhboy-skills",
+  "skills": [
+    "./skills/action-pattern",
+    "./skills/boost-documentation-search",
+    "./skills/component-composition-patterns",
+    "./skills/github-cli-workarounds",
+    "./skills/inertia-react-development",
+    "./skills/javascript-typescript-conventions",
+    "./skills/orchestrator-mode",
+    "./skills/pest-testing",
+    "./skills/refactor-comments-that-are-code-smells",
+    "./skills/routing-and-controllers",
+    "./skills/single-task-responsibility",
+    "./skills/spatie-data-transfer-objects",
+    "./skills/tdd-laravel",
+    "./skills/troubleshooting",
+    "./skills/troubleshooting-backend",
+    "./skills/troubleshooting-frontend",
+    "./skills/unexpected-situations",
+    "./skills/wayfinder-conventions",
+    "./skills/wayfinder-development",
+    "./skills/write-a-skill"
+  ]
+}
