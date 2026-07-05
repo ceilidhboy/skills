@@ -2,6 +2,7 @@
   "name": "ceilidhboy-skills",
   "skills": [
     "./skills/action-pattern",
+    "./skills/adr-creation",
     "./skills/boost-documentation-search",
     "./skills/component-composition-patterns",
     "./skills/github-cli-workarounds",
