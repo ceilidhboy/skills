@@ -12,8 +12,8 @@ COLOR_MODE="auto"
 
 # ── Colour support ──────────────────────────────────────────────
 if [ -t 1 ]; then
-  GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'
-  BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
+  GREEN=$'\033[0;32m'; RED=$'\033[0;31m'; YELLOW=$'\033[0;33m'
+  BOLD=$'\033[1m'; DIM=$'\033[2m'; NC=$'\033[0m'
 else
   GREEN=''; RED=''; YELLOW=''; BOLD=''; DIM=''; NC=''
 fi
@@ -21,8 +21,8 @@ fi
 apply_color() {
   local cm="$1"
   if [ "$cm" = "always" ]; then
-    GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'
-    BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
+    GREEN=$'\033[0;32m'; RED=$'\033[0;31m'; YELLOW=$'\033[0;33m'
+    BOLD=$'\033[1m'; DIM=$'\033[2m'; NC=$'\033[0m'
   elif [ "$cm" = "never" ]; then
     GREEN=''; RED=''; YELLOW=''; BOLD=''; DIM=''; NC=''
   fi
