@@ -2,26 +2,21 @@
 set -euo pipefail
 
 # Prepares a clean test environment for npx skills@latest add:
-#   1. Backs up ~/.agents/skills/ to ~/.agents/skills.bak (aborts if exists)
+#   1. Backs up ~/.agents/skills/ to ~/.agents/skills.bak.TIMESTAMP
 #   2. Removes only symlinks that point back to this repo
 #
 # After running this, do:
 #   npx skills@latest add ceilidhboy/skills
 #   bash scripts/verify-skills.sh
 #
-# To restore: rm -rf ~/.agents/skills && mv ~/.agents/skills.bak ~/.agents/skills
+# To restore: rm -rf ~/.agents/skills && mv ~/.agents/skills.bak.TIMESTAMP ~/.agents/skills
+#
+# To clean up old backups: bash scripts/cleanup-backup.sh
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="$HOME/.agents/skills"
-BACKUP="${DEST}.bak"
-
-# Step 1: Backup
-if [ -e "$BACKUP" ]; then
-  echo "Aborting: $BACKUP already exists."
-  echo "Either restore from it first, or remove it:"
-  echo "  rm -rf $BACKUP"
-  exit 1
-fi
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+BACKUP="${DEST}.bak.${TIMESTAMP}"
 
 if [ -d "$DEST" ]; then
   cp -a "$DEST" "$BACKUP"
@@ -54,3 +49,6 @@ echo "  bash scripts/verify-skills.sh"
 echo ""
 echo "To restore (if needed):"
 echo "  rm -rf $DEST && mv $BACKUP $DEST"
+echo ""
+echo "To clean up old backups:"
+echo "  bash scripts/cleanup-backup.sh"

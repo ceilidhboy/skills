@@ -46,15 +46,16 @@ bash scripts/verify-skills.sh
 bash scripts/verify-skills.sh --mode prod
 ```
 
-If anything went wrong during the install:
+If anything went wrong, restore from the timestamped backup (the script tells you the exact path):
 ```bash
-rm -rf ~/.agents/skills && mv ~/.agents/skills.bak ~/.agents/skills
+rm -rf ~/.agents/skills && mv ~/.agents/skills.bak.TIMESTAMP ~/.agents/skills
 ```
 
-If everything succeeded, you can remove the backup:
+If everything succeeded, clean up old backups:
 ```bash
-rm -rf ~/.agents/skills.bak
+bash scripts/cleanup-backup.sh
 ```
+This prompts for each backup before removing. Use `-y` to remove all without prompting.
 
 ## Verify script reference
 
