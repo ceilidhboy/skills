@@ -12,23 +12,19 @@ COLOR_MODE="auto"
 
 # ── Colour support ──────────────────────────────────────────────
 if [ -t 1 ]; then
-  # stdout is a terminal — safe to assume ANSI support (2026)
-  GREEN='\033[0;32m'
-  RED='\033[0;31m'
-  YELLOW='\033[0;33m'
-  BOLD='\033[1m'
-  NC='\033[0m' # No Color
+  GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'
+  BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
 else
-  GREEN=''; RED=''; YELLOW=''; BOLD=''; NC=''
+  GREEN=''; RED=''; YELLOW=''; BOLD=''; DIM=''; NC=''
 fi
 
 apply_color() {
-  local color_mode="$1"
-  if [ "$color_mode" = "always" ]; then
-    GREEN='\033[0;32m'; RED='\033[0;31m'
-    YELLOW='\033[0;33m'; BOLD='\033[1m'; NC='\033[0m'
-  elif [ "$color_mode" = "never" ]; then
-    GREEN=''; RED=''; YELLOW=''; BOLD=''; NC=''
+  local cm="$1"
+  if [ "$cm" = "always" ]; then
+    GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'
+    BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
+  elif [ "$cm" = "never" ]; then
+    GREEN=''; RED=''; YELLOW=''; BOLD=''; DIM=''; NC=''
   fi
 }
 
@@ -75,30 +71,18 @@ while [[ $# -gt 0 ]]; do
         *) echo "Error: --color must be auto, always, or never. Use --help for details."; exit 1 ;;
       esac
       ;;
-    -v)
-      VERBOSE=true
-      shift
-      ;;
-    -h|--help)
-      show_help
-      ;;
-    *)
-      echo "Unknown option: $1. Use --help for usage."
-      exit 1
-      ;;
+    -v) VERBOSE=true; shift ;;
+    -h|--help) show_help ;;
+    *) echo "Unknown option: $1. Use --help for usage."; exit 1 ;;
   esac
 done
 
 apply_color "$COLOR_MODE"
 
-# ── Verification loop ────────────────────────────────────────────
-passed=0
-failed=0
-missing=0
-total=0
-
-pass()  { local n="$1"; echo -e "${GREEN}✓${NC} $n"; }
-fail()  { local n="$1"; shift; echo -e "${RED}✗${NC} $n $*"; }
+# ── Collect results ──────────────────────────────────────────────
+declare -a names types details statuses
+max_name_len=0
+passed=0; failed=0; missing=0; total=0
 
 while IFS= read -r -d '' skill_md; do
   total=$((total + 1))
@@ -106,27 +90,37 @@ while IFS= read -r -d '' skill_md; do
   name="$(basename "$src")"
   target="$DEST/$name"
 
+  # Track longest name for column alignment
+  [ ${#name} -gt $max_name_len ] && max_name_len=${#name}
+
+  names+=("$name")
+
   if [ ! -e "$target" ]; then
-    fail "$name" "— missing"
+    statuses+=("fail")
+    types+=("${RED}missing${NC}")
+    details+=("")
     missing=$((missing + 1))
     continue
   fi
 
   if [ -L "$target" ]; then
-    # Symlink found
-    if [ "$MODE" = "prod" ]; then
-      fail "$name" "— symlink found but production mode expects a directory copy"
-      failed=$((failed + 1))
-      continue
-    fi
     actual=$(readlink "$target")
     if [ "$actual" = "$src" ]; then
-      pass "$name"
-      passed=$((passed + 1))
+      if [ "$MODE" = "prod" ]; then
+        statuses+=("fail")
+        types+=("${RED}symlink${NC}")
+        details+=("${RED}expected directory copy${NC}")
+        failed=$((failed + 1))
+      else
+        statuses+=("pass")
+        types+=("${DIM}symlink${NC}")
+        details+=("→ ${actual#$REPO/skills/}")
+        passed=$((passed + 1))
+      fi
     else
-      fail "$name" "— symlink points to wrong target"
-      echo "    expected: $src"
-      echo "    actual:   $actual"
+      statuses+=("fail")
+      types+=("${RED}symlink${NC}")
+      details+=("${RED}wrong target: ${actual#$REPO/}${NC}")
       failed=$((failed + 1))
     fi
     continue
@@ -134,23 +128,52 @@ while IFS= read -r -d '' skill_md; do
 
   # Real directory
   if [ "$MODE" = "dev" ]; then
-    fail "$name" "— directory found but dev mode expects a symlink"
+    statuses+=("fail")
+    types+=("${RED}directory${NC}")
+    details+=("${RED}expected symlink${NC}")
     failed=$((failed + 1))
-    if $VERBOSE; then
-      file "$target"
-    fi
     continue
   fi
 
   if [ ! -f "$target/SKILL.md" ]; then
-    fail "$name" "— directory exists but has no SKILL.md"
+    statuses+=("fail")
+    types+=("${RED}directory${NC}")
+    details+=("${RED}no SKILL.md${NC}")
     failed=$((failed + 1))
     continue
   fi
 
-  pass "$name"
+  statuses+=("pass")
+  types+=("directory")
+  details+=("")
   passed=$((passed + 1))
 done < <(find "$REPO/skills" -name SKILL.md -print0)
+
+# ── Print results table ──────────────────────────────────────────
+col_width=$(( max_name_len + 2 ))  # +2 for breathing room
+
+header_status="${BOLD}Status${NC}"
+header_skill=$(printf "${BOLD}%-${col_width}s${NC}" "Skill")
+header_type="${BOLD}Type${NC}"
+header_details="${BOLD}Details${NC}"
+printf "  %s  %s %s  %s\n" "$header_status" "$header_skill" "$header_type" "$header_details"
+echo ""
+
+for i in $(seq 0 $((total - 1))); do
+  name="${names[$i]}"
+  type="${types[$i]}"
+  detail="${details[$i]}"
+  stat="${statuses[$i]}"
+
+  if [ "$stat" = "pass" ]; then
+    ico="${GREEN}✓${NC}"
+  else
+    ico="${RED}✗${NC}"
+  fi
+
+  padded=$(printf "%-${col_width}s" "$name")
+  printf "  %s  %s %s  %s\n" "$ico" "$padded" "$type" "$detail"
+done
 
 # ── Summary ──────────────────────────────────────────────────────
 echo ""
