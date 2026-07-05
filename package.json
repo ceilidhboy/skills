@@ -8,5 +8,8 @@
     "url": "https://github.com/ceilidhboy/skills"
   },
   "license": "MIT",
-  "packageManager": "npm@10.9.4"
+  "packageManager": "npm@10.9.4",
+  "pi": {
+    "skills": ["./skills"]
+  }
 }
