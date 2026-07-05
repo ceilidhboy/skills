@@ -42,7 +42,10 @@ if [ ${#backups[@]} -eq 0 ]; then
   exit 0
 fi
 
-echo "Found ${#backups[@]} backup director${#backups[@]##*1}:"
+count=${#backups[@]}
+plural="directories"
+[ "$count" -eq 1 ] && plural="directory"
+echo "Found $count backup $plural:"
 echo ""
 
 for dir in "${backups[@]}"; do
