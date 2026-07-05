@@ -18,6 +18,7 @@ This will present an interactive picker — select the skills you want and which
 | adr-creation | Dual-format ADR creation — Markdown (source of truth) + HTML (human explainer with diagrams). Keeps both in sync on updates |
 | boost-documentation-search | Search Laravel Boost documentation effectively |
 | component-composition-patterns | Building reusable components through composition |
+| creating-pull-requests | Company pull request workflow and branch policy — know how (and how not) to create PRs |
 | github-cli-workarounds | Workarounds for shell escaping with `gh` CLI |
 | html-output | Generate self-contained HTML documents with inline SVG diagrams, grids, and colour styling — the html-output skill. Use when visual presentation benefits understanding |
 | inertia-react-development | Inertia.js v2 React client-side development |
