@@ -19,7 +19,6 @@ This will present an interactive picker — select the skills you want and which
 | boost-documentation-search | Search Laravel Boost documentation effectively |
 | component-composition-patterns | Building reusable components through composition |
 | github-cli-workarounds | Workarounds for shell escaping with `gh` CLI |
-| html-output | Generate self-contained HTML documents with inline SVG diagrams, grids, and colour styling. Uses the ivory/slate/clay design system |
 | inertia-react-development | Inertia.js v2 React client-side development |
 | javascript-typescript-conventions | JS/TS coding conventions and best practices |
 | orchestrator-mode | Strict orchestrator agent instructions |
