@@ -15,6 +15,7 @@ This will present an interactive picker — select the skills you want and which
 | Skill | Description |
 |---|---|
 | action-pattern | Action classes with single responsibility and `execute()` convention |
+| adr-creation | Dual-format ADR creation — Markdown (source of truth) + HTML (human explainer with diagrams). Keeps both in sync on updates |
 | boost-documentation-search | Search Laravel Boost documentation effectively |
 | component-composition-patterns | Building reusable components through composition |
 | github-cli-workarounds | Workarounds for shell escaping with `gh` CLI |
