@@ -21,6 +21,7 @@ Backups are stored as ~/.agents/skills.bak or ~/.agents/skills.bak.YYYYMMDD-HHMM
 
 Options:
   -y    Remove all backups without prompting
+  a     (interactive) Remove remaining backups all at once
   -h, --help  Show this help message
 EOF
   exit 0
@@ -64,9 +65,18 @@ if [ "$AUTO" = true ]; then
   exit 0
 fi
 
+ALL=false
 for dir in "${backups[@]}"; do
   echo ""
-  read -r -p "Remove $dir? [y/N] " reply
+  if [ "$ALL" = true ]; then
+    reply="y"
+  else
+    read -r -p "Remove $dir? [y/N/a] " reply
+    if [[ "$reply" =~ ^[Aa](ll)?$ ]]; then
+      ALL=true
+      reply="y"
+    fi
+  fi
   if [[ "$reply" =~ ^[Yy](es)?$ ]]; then
     rm -rf "$dir"
     echo "Removed."

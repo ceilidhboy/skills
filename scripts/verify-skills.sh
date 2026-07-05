@@ -185,8 +185,16 @@ echo -e "  ${RED}✗${NC} Missing: $missing"
 if [ "$failed" -eq 0 ] && [ "$missing" -eq 0 ]; then
   echo ""
   echo -e "${GREEN}All $total skills verified OK — everything is in order.${NC}"
-  if [ "$MODE" = "prod" ]; then
-    echo "No cleanup needed."
+  # Check for backups and mention them
+  mapfile -t backups < <(find "$HOME/.agents" -maxdepth 1 -name 'skills.bak*' -type d 2>/dev/null | sort)
+  if [ ${#backups[@]} -gt 0 ]; then
+    plural="ies"
+    [ ${#backups[@]} -eq 1 ] && plural="y"
+    suffix="s"
+    [ ${#backups[@]} -eq 1 ] && suffix=""
+    echo -e "${YELLOW}No cleanup needed, but ${#backups[@]} backup director${plural} exist${suffix}.${NC}"
+    echo "  Remove with: scripts/cleanup-backup.sh"
+    echo "  Or remove all at once: scripts/cleanup-backup.sh -y"
   fi
   exit 0
 else
