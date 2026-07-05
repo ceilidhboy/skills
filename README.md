@@ -39,3 +39,7 @@ This will present an interactive picker — select the skills you want and which
 ## License
 
 MIT
+
+---
+
+To add or update skills, see [CONTRIBUTING.md](CONTRIBUTING.md).
