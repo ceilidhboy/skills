@@ -25,21 +25,18 @@ else
   echo "No $DEST directory to back up."
 fi
 
-# Step 2: Remove repo-origin symlinks
+# Step 2: Remove repo-origin skill directories (real dirs or symlinks)
 removed=0
 while IFS= read -r -d '' skill_md; do
   name="$(basename "$(dirname "$skill_md")")"
   target="$DEST/$name"
-  if [ -L "$target" ]; then
-    actual="$(readlink "$target")"
-    if [ "$actual" = "$(dirname "$skill_md")" ]; then
-      rm "$target"
-      removed=$((removed + 1))
-    fi
+  if [ -e "$target" ]; then
+    rm -rf "$target"
+    removed=$((removed + 1))
   fi
 done < <(find "$REPO/skills" -name SKILL.md -print0)
 
-echo "✓ Removed $removed repo-origin symlinks from $DEST"
+echo "✓ Removed $removed repo-origin skill directories from $DEST"
 echo ""
 echo "Ready for clean install:"
 echo "  npx skills@latest add ceilidhboy/skills"
