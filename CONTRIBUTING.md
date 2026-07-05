@@ -65,6 +65,19 @@ This prompts for each backup before removing. Use `-y` to remove all without pro
 | `dev` | Must be a symlink pointing back to this repo. | After `link-skills.sh` during development |
 | `prod` | Must be a real directory with `SKILL.md` (not a symlink). | After `npx skills@latest add` to confirm end-user install |
 
+### Why `--mode prod` expects directories
+
+The `npx skills@latest add` installer copies skill files into `~/.agents/skills/`
+(the canonical location). Universal agents like Pi read directly from this
+directory — no symlinks needed.
+
+If you also selected Pi (or another agent) in the installer's optional agents
+list, symlinks are created in that agent's own directory
+(e.g. `~/.pi/agent/skills/`) pointing back to `~/.agents/skills/`. But the
+canonical copy remains a real directory. So `--mode prod` showing all
+"directory" means the install succeeded correctly — the skills are in place
+and ready to use.
+
 ## Notes
 
 - Only `skills/{name}/SKILL.md` matters to installers. The `.claude-plugin/plugin.json` is for Claude Code's plugin system — do not edit it manually.
