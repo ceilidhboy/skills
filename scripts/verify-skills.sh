@@ -149,30 +149,28 @@ while IFS= read -r -d '' skill_md; do
   passed=$((passed + 1))
 done < <(find "$REPO/skills" -name SKILL.md -print0)
 
-# ── Print results table ──────────────────────────────────────────
-col_width=$(( max_name_len + 2 ))  # +2 for breathing room
+# ── Output ───────────────────────────────────────────────────────
+# Two-column layout: status+name | type (symlink/directory)
+# Strip ANSI codes so we can measure visual widths
+strip_ansi() { sed $'s/\x1b\\[[0-9;]*m//g'; }
 
-header_status="${BOLD}Status${NC}"
-header_skill=$(printf "${BOLD}%-${col_width}s${NC}" "Skill")
-header_type="${BOLD}Type${NC}"
-header_details="${BOLD}Details${NC}"
-printf "  %s  %s %s  %s\n" "$header_status" "$header_skill" "$header_type" "$header_details"
-echo ""
+# Calculate padding for the name column
+col_icon=2
+col_name=$(( max_name_len + 2 ))
 
 for i in $(seq 0 $((total - 1))); do
   name="${names[$i]}"
-  type="${types[$i]}"
-  detail="${details[$i]}"
-  stat="${statuses[$i]}"
+  typ="${types[$i]}"
 
-  if [ "$stat" = "pass" ]; then
+  # Icon with colour
+  if [ "${statuses[$i]}" = "pass" ]; then
     ico="${GREEN}✓${NC}"
   else
     ico="${RED}✗${NC}"
   fi
 
-  padded=$(printf "%-${col_width}s" "$name")
-  printf "  %s  %s %s  %s\n" "$ico" "$padded" "$type" "$detail"
+  # Pad name to column width
+  printf "%s %-*s %s\n" "$ico" $((col_name - 2)) "$name" "$typ"
 done
 
 # ── Summary ──────────────────────────────────────────────────────
