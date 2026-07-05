@@ -3,17 +3,34 @@ set -euo pipefail
 
 # Verifies that all skills in this repo are correctly installed
 # in ~/.agents/skills/.
-#
-# Usage:
-#   bash scripts/verify-skills.sh                  # auto mode (accepts both)
-#   bash scripts/verify-skills.sh --mode dev       # strict: symlinks only
-#   bash scripts/verify-skills.sh --mode prod      # strict: directories only
-#   bash scripts/verify-skills.sh -v               # verbose
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="$HOME/.agents/skills"
 VERBOSE=false
 MODE="auto"
+
+show_help() {
+  cat <<EOF
+Usage: $(basename "$0") [OPTIONS]
+
+Verify that all skills in this repo are correctly installed
+in ~/.agents/skills/.
+
+Options:
+  --mode MODE    Verification mode: auto, dev, or prod (default: auto)
+                   auto - accepts symlinks or real directories
+                   dev  - strict: must be a symlink pointing to this repo
+                   prod - strict: must be a real directory with SKILL.md
+  -v             Verbose output (shows file details on failures)
+  -h, --help     Show this help message
+
+Examples:
+  $(basename "$0")                  # auto mode (accepts both)
+  $(basename "$0") --mode dev       # after link-skills.sh
+  $(basename "$0") --mode prod      # after npx skills add
+EOF
+  exit 0
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -21,15 +38,18 @@ while [[ $# -gt 0 ]]; do
       shift
       case "$1" in
         auto|dev|prod) MODE="$1"; shift ;;
-        *) echo "Error: --mode must be auto, dev, or prod"; exit 1 ;;
+        *) echo "Error: --mode must be auto, dev, or prod. Use --help for details."; exit 1 ;;
       esac
       ;;
     -v)
       VERBOSE=true
       shift
       ;;
+    -h|--help)
+      show_help
+      ;;
     *)
-      echo "Usage: $0 [--mode auto|dev|prod] [-v]"
+      echo "Unknown option: $1. Use --help for usage."
       exit 1
       ;;
   esac
