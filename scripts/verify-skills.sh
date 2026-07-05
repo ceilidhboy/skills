@@ -62,7 +62,10 @@ echo "  ✗ Missing:          $missing"
 
 if [ "$failed" -eq 0 ] && [ "$missing" -eq 0 ]; then
   echo ""
-  echo "All skills verified OK."
+  echo "All skills verified OK — everything is in order."
+  echo "No cleanup needed. Your existing backup at ~/.agents/skills.bak"
+  echo "can be removed if you no longer need it:"
+  echo "  rm -rf ~/.agents/skills.bak"
   exit 0
 else
   echo ""

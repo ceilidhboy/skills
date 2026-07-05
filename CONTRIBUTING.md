@@ -29,25 +29,23 @@ All 21 (✓) and a clean summary means everything is in place.
 To test the repo as if on a fresh machine (e.g. after adding a new skill):
 
 ```bash
-# 1. Back up current symlinks
-cp -a ~/.agents/skills ~/.agents/skills.bak
+# 1. Prepare: backup and remove current repo symlinks
+bash scripts/prepare-test.sh
 
-# 2. Remove only your repo's symlinks
-for skill in skills/*/; do
-  name=$(basename "$skill")
-  if [ -L "$HOME/.agents/skills/$name" ]; then
-    rm "$HOME/.agents/skills/$name"
-  fi
-done
-
-# 3. Install fresh from GitHub
+# 2. Install fresh from GitHub
 npx skills@latest add ceilidhboy/skills
 
-# 4. Verify the result
+# 3. Verify the result
 bash scripts/verify-skills.sh
 
-# 5. If anything went wrong, restore
+# 4. If anything went wrong, restore
 rm -rf ~/.agents/skills && mv ~/.agents/skills.bak ~/.agents/skills
+```
+
+If all skills verify OK, no cleanup is needed — the verify script confirms this.
+Remove the backup once you're satisfied:
+```bash
+rm -rf ~/.agents/skills.bak
 ```
 
 ## Notes
