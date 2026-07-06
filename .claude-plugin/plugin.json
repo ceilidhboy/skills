@@ -8,10 +8,10 @@
     "./skills/creating-pull-requests",
     "./skills/github-cli-workarounds",
     "./skills/html-output",
-    "./skills/inertia-react-development",
+    "./skills/inertia-react-conventions",
     "./skills/javascript-typescript-conventions",
     "./skills/orchestrator-mode",
-    "./skills/pest-testing",
+    "./skills/pest-testing-conventions",
     "./skills/refactor-comments-that-are-code-smells",
     "./skills/routing-and-controllers",
     "./skills/settings-system",
@@ -23,7 +23,6 @@
     "./skills/troubleshooting-frontend",
     "./skills/unexpected-situations",
     "./skills/wayfinder-conventions",
-    "./skills/wayfinder-development",
     "./skills/write-a-skill"
   ]
 }
