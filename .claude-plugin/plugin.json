@@ -13,6 +13,7 @@
     "./skills/pest-testing",
     "./skills/refactor-comments-that-are-code-smells",
     "./skills/routing-and-controllers",
+    "./skills/settings-system",
     "./skills/single-task-responsibility",
     "./skills/spatie-data-transfer-objects",
     "./skills/tdd-laravel",

@@ -27,6 +27,7 @@ This will present an interactive picker — select the skills you want and which
 | pest-testing | Pest 4 PHP testing framework |
 | refactor-comments-that-are-code-smells | Code quality — refactor comments that explain what code does |
 | routing-and-controllers | Laravel controllers, routes, and Wayfinder mapping |
+| settings-system | Multi-tenant polymorphic settings system with agency-scoped records and global fallback chain |
 | single-task-responsibility | Recognize SRP violations in task implementation |
 | spatie-data-transfer-objects | Spatie Laravel Data transfer objects |
 | tdd-laravel | Test-driven development with Pest PHP |
