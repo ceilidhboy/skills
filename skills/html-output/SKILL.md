@@ -9,6 +9,7 @@ description: >-
   controls. Not needed for simple lists, linear text, or straightforward data
   using well-understood terminology.
 compatibility: Any agent harness supporting HTML output
+author: Mike Scott
 ---
 
 # HTML Output

@@ -1,10 +1,11 @@
 ---
-name: pest-testing
+name: pest-testing-conventions
 description: >-
-    Tests applications using the Pest 4 PHP framework. Activates when writing tests, creating unit or feature
-    tests, adding assertions, testing Livewire components, browser testing, debugging test failures,
-    working with datasets or mocking; or when the user mentions test, spec, TDD, expects, assertion,
-    coverage, or needs to verify functionality works.
+    Pest 4 testing conventions, workflows, and troubleshooting for Laravel projects. Activates when
+    writing or debugging tests, working with browser/smoke/architecture tests, handling test output issues
+    (PAO mode, crash diagnostics), setting up datasets or mocking, and following project conventions for
+    assertions, higher-order expectations, and test organization.
+author: Mike Scott
 ---
 
 # Pest Testing 4

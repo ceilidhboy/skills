@@ -1,6 +1,7 @@
 ---
 name: spatie-data-transfer-objects
 description: Creating and composing Spatie Laravel Data transfer objects for backend-to-frontend communication with automatic TypeScript type generation.
+author: Mike Scott
 ---
 
 # ⚠️ CRITICAL: Spatie Data Transfer Objects (DTOs)

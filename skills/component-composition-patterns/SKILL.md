@@ -1,6 +1,7 @@
 ---
 name: component-composition-patterns
 description: Building reusable components through composition using generic base components with specific wrapper components that provide styling, configuration, and domain-specific behavior.
+author: Mike Scott
 ---
 
 # Component Composition Patterns

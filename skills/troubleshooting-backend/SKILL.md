@@ -1,6 +1,7 @@
 ---
 name: troubleshooting-backend
 description: Troubleshooting Laravel, PHP, and backend-related errors.
+author: Mike Scott
 ---
 
 # Troubleshooting Backend Issues

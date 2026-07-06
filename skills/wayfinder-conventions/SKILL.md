@@ -1,6 +1,7 @@
 ---
 name: wayfinder-conventions
 description: Project routing conventions and patterns. Complements the Laravel Wayfinder skill with project preferences for actions over routes.
+author: Mike Scott
 ---
 
 # Wayfinder Conventions

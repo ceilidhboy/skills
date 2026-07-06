@@ -1,6 +1,7 @@
 ---
 name: javascript-typescript-conventions
 description: Provides JavaScript and TypeScript coding conventions including casing rules, naming patterns, and best practices for variables, constants, components, and types. Use when writing or editing .ts, .tsx, .js, .jsx files, creating React components, or working with TypeScript types.
+author: Mike Scott
 ---
 
 # JavaScript/TypeScript Conventions

@@ -1,6 +1,7 @@
 ---
 name: orchestrator-mode
 description: Strict orchestrator-agent instructions — delegate all work to sub-agents, minimize context token usage, never read/write files directly except handoff/reports. Use when user instructs you to act as a pure orchestrator, at session start for high-token-efficiency work, or when the user says "orchestrator", "pure orchestrator", "delegate everything", "act as orchestrator", or any handoff document references this skill.
+author: Mike Scott
 ---
 
 # Orchestrator Mode

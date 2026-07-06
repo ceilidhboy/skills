@@ -1,6 +1,7 @@
 ---
 name: unexpected-situations
 description: Stop and consult the user when encountering unexpected situations, multiple failed attempts, or out-of-scope work. Use when things aren't plain sailing, when encountering unexpected behavior, when multiple workarounds fail, or when work appears to exceed task scope.
+author: Mike Scott
 ---
 
 # Unexpected Situations

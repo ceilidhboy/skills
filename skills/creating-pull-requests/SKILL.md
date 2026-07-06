@@ -1,6 +1,7 @@
 ---
 name: creating-pull-requests
 description: Company pull request workflow and branch policy. Use when user says "create a PR", "make a pull request", "open a PR", or when managing GitHub pull requests for company projects.
+author: Mike Scott
 ---
 
 # Creating Pull Requests

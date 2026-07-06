@@ -1,6 +1,7 @@
 ---
 name: troubleshooting-frontend
 description: Troubleshooting TypeScript, React, and frontend-related errors.
+author: Mike Scott
 ---
 
 # Troubleshooting Frontend Issues

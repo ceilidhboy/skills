@@ -1,6 +1,7 @@
 ---
-name: inertia-react-development
-description: Develops Inertia.js v2 React client-side applications with proper component organization and patterns.
+name: inertia-react-conventions
+description: React component architecture and project conventions for Inertia.js v2 applications. Covers directory structure, structural vs markup components, DRY patterns, prop naming, and project-specific patterns.
+author: Mike Scott
 ---
 
 # Inertia.js v2 + React Development
