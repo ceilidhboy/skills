@@ -59,9 +59,8 @@ echo ""
 if [ "$AUTO" = true ]; then
   for dir in "${backups[@]}"; do
     rm -rf "$dir"
-    echo "Removed: $dir"
   done
-  echo "Done."
+  echo "Removed $count backup $plural."
   exit 0
 fi
 
@@ -79,11 +78,5 @@ for dir in "${backups[@]}"; do
   fi
   if [[ "$reply" =~ ^[Yy](es)?$ ]]; then
     rm -rf "$dir"
-    echo "Removed."
-  else
-    echo "Skipped."
   fi
 done
-
-echo ""
-echo "Done."
