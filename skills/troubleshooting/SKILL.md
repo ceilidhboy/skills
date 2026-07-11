@@ -2,6 +2,8 @@
 name: troubleshooting
 description: General troubleshooting guidance that routes to specific backend or frontend troubleshooting skills.
 author: Mike Scott
+version: '1.0.0'
+updated: '2026-07-11'
 ---
 
 # Troubleshooting

@@ -2,6 +2,8 @@
 name: boost-documentation-search
 description: Search Laravel Boost documentation effectively when Boost-specific information is needed.
 author: Mike Scott
+version: '1.0.0'
+updated: '2026-07-11'
 ---
 
 # Boost Documentation Search

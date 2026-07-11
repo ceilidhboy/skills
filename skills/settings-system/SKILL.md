@@ -2,6 +2,8 @@
 name: settings-system
 description: Multi-tenant polymorphic settings system with agency-scoped records and global fallback chain. Create, read, update settings records. Use when working with App\Models\Setting, App\Enumerations\SettingType, the settings table migration, the polymorphic settings system, or the fallback chain (agency-specific → global default). Also use when integrating third-party services (Xero, Stripe, etc.) that need per-agency configuration storage.
 author: Mike Scott
+version: '1.0.0'
+updated: '2026-07-11'
 ---
 
 # Settings System

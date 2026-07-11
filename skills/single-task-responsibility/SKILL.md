@@ -2,6 +2,8 @@
 name: single-task-responsibility
 description: Recognize when task implementation violates Single Responsibility Principle and stop to consult the user. Use when implementing a task and discovering you're addressing multiple distinct responsibilities.
 author: Mike Scott
+version: '1.0.0'
+updated: '2026-07-11'
 ---
 
 # Single Task Responsibility

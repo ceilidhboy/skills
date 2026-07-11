@@ -2,6 +2,8 @@
 name: refactor-comments-that-are-code-smells
 description: Scans code for comments that explain what code does and refactors them using the action pattern or extracting to methods. Use after writing or editing any code.
 author: Mike Scott
+version: '1.0.0'
+updated: '2026-07-11'
 ---
 
 # Refactor Comments That Are Code Smells

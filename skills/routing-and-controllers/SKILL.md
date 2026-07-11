@@ -2,6 +2,8 @@
 name: routing-and-controllers
 description: Creating controllers, registering routes, and understanding how routes map to Wayfinder TypeScript actions.
 author: Mike Scott
+version: '1.0.0'
+updated: '2026-07-11'
 ---
 
 # Routing and Controllers

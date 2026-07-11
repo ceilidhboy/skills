@@ -10,6 +10,8 @@ description: >-
   using well-understood terminology.
 compatibility: Any agent harness supporting HTML output
 author: Mike Scott
+version: '1.0.0'
+updated: '2026-07-11'
 ---
 
 # HTML Output

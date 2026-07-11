@@ -2,6 +2,8 @@
 name: action-pattern
 description: Creating and using action classes to encapsulate business logic. Actions replace traditional Service classes with reusable, composable, single-responsibility classes that follow a consistent `execute()` convention.
 author: Mike Scott
+version: '1.0.0'
+updated: '2026-07-11'
 ---
 
 # Action Pattern

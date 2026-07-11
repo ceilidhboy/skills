@@ -2,6 +2,8 @@
 name: adr-creation
 description: Creates and maintains dual-format ADRs — Markdown (source of truth for agents) and HTML (rich explainer for humans with diagrams). Keeps both formats in sync on updates. Use when user says "create an ADR", "document this decision", "write an ADR", "ADR for X", or when creating or updating a file in docs/adr/.
 author: Mike Scott
+version: '1.1.0'
+updated: '2026-07-11'
 ---
 
 # ADR Creation (Dual Format)

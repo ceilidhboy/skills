@@ -6,6 +6,8 @@ description: >-
     (PAO mode, crash diagnostics), setting up datasets or mocking, and following project conventions for
     assertions, higher-order expectations, and test organization.
 author: Mike Scott
+version: '1.0.0'
+updated: '2026-07-11'
 ---
 
 # Pest Testing 4

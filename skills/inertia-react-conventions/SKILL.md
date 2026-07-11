@@ -2,6 +2,8 @@
 name: inertia-react-conventions
 description: React component architecture and project conventions for Inertia.js v2 applications. Covers directory structure, structural vs markup components, DRY patterns, prop naming, and project-specific patterns.
 author: Mike Scott
+version: '1.0.0'
+updated: '2026-07-11'
 ---
 
 # Inertia.js v2 + React Development

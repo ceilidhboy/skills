@@ -2,6 +2,8 @@
 name: tdd-laravel
 description: Test-driven development with red-green-refactor loop using Pest PHP. Use when user wants to build features or fix bugs using TDD, mentions "red-green-refactor", wants integration tests, asks for test-first development, or needs guidance on writing testable code with Pest.
 author: Mike Scott
+version: '1.0.0'
+updated: '2026-07-11'
 ---
 
 # Test-Driven Development

@@ -2,6 +2,8 @@
 name: github-cli-workarounds
 description: Workarounds for shell escaping issues when using the GitHub CLI (`gh`) for creating issues, gists, and pull requests with content containing special characters like `$`, backticks, or quotes. Use when creating GitHub issues, gists, or pull requests where content contains `$variables`, backtick-enclosed code, or multi-line bodies that cause shell parsing errors.
 author: Mike Scott
+version: '1.0.0'
+updated: '2026-07-11'
 ---
 
 # GitHub CLI Workarounds
