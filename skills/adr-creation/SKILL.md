@@ -49,6 +49,12 @@ Ask the user enough to understand:
 - What alternatives were considered?
 - Why was this approach chosen?
 
+**Project detection (automatic):** Determine the project name and repo URL:
+1. Read `README.md` from the project root — if it has YAML frontmatter with a `name` field, use that as the project name
+2. If no frontmatter or no `name` field, extract the first `# ` heading as the project name
+3. If neither exists, fall back to the repo name from `git remote get-url origin`
+4. Repo URL is always derived from `git remote get-url origin` (see [Cross-Reference URLs](#cross-reference-urls))
+
 ### 2. Create the Markdown ADR
 
 Write to `docs/adr/YYYY-MM-DD-kebab-title.md`.
@@ -108,6 +114,8 @@ title: 'ADR-NNNN: Short Decision Title'
 date: YYYY-MM-DD
 status: Draft | Accepted | Superseded
 deciders: Project lead, Development team
+project: Project Name
+repo: https://github.com/owner/repo
 version: '1.0'
 updated: YYYY-MM-DD
 html: ./html/YYYY-MM-DD-kebab-title.html
@@ -117,6 +125,7 @@ html: ./html/YYYY-MM-DD-kebab-title.html
 
 # ADR-NNNN: Short Decision Title
 
+- **Project:** Project Name — [GitHub](https://github.com/owner/repo)
 - **Date:** YYYY-MM-DD
 - **Status:** Draft | Accepted | Superseded
 - **Deciders:** [list]

@@ -1,3 +1,7 @@
+---
+name: Skills
+---
+
 # ceilidhboy/skills
 
 Agent skills for Laravel and PHP development. Compatible with Pi, Claude Code, Cursor, Codex, and any agent that supports SKILL.md skills.

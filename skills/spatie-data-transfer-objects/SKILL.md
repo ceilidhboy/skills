@@ -168,6 +168,70 @@ These types are available in React components for type-safe data handling.
 
 **Rule of Thumb**: Trust the command output over the viewed file. If the transformer output shows your type was transformed, it exists in the file even if the viewing tool shows an older version.
 
+## Custom Factory Methods with `from*` Auto-Discovery
+
+Spatie Laravel Data supports type-based auto-discovery of factory methods. When you call `Data::from($payload)`, the package inspects the payload type and routes to a matching `from*` static method.
+
+### How It Works
+
+Add a static method named `from{Type}()` on your Data class, where `{Type}` matches the PHP type of the payload. When `from()` is called with that type, the method is automatically invoked.
+
+The most common case is `fromArray()` for raw array payloads:
+
+```php
+class ScreenData extends Data
+{
+    public function __construct(
+        public string $id,
+        public string $label,
+        public string|null $name,
+        public string $displayType,
+        public string|null $dataSource,
+        public string|null $videoUrl,
+        public ScreenPositionData $position,
+        public ScreenDimensionsData|null $dimensions,
+    ) {}
+
+    /**
+     * Auto-called by `from()` when an array is passed.
+     * Handles defaults, nested DTO construction, and nullable fields
+     * that may be omitted from the source array.
+     */
+    public static function fromArray(array $config): self
+    {
+        return new self(
+            id: $config['id'],
+            label: $config['label'],
+            name: $config['name'] ?? null,
+            displayType: $config['displayType'] ?? 'carousel',
+            dataSource: $config['dataSource'] ?? 'featured',
+            videoUrl: $config['videoUrl'] ?? null,
+            position: ScreenPositionData::from($config['position']),
+            dimensions: isset($config['dimensions'])
+                ? ScreenDimensionsData::from($config['dimensions'])
+                : null,
+        );
+    }
+}
+```
+
+### Benefits
+
+- **Callers never need to know which factory method to use** — they just call `Data::from($anything)`
+- **The Data class encapsulates its own construction logic** — no mapping code scattered across actions
+- **Nested DTOs compose naturally** — use `from()` inside the factory for nested objects too
+- **Nullable/missing fields are handled in one place** — defaults and null coalescing live on the Data class
+
+### Example Usage
+
+```php
+// Caller doesn't need to know about fromArray:
+$screen = ScreenData::from($rawConfigArray);
+
+// If the payload is an Eloquent model instead, add fromModel():
+$screen = ScreenData::from($eloquentModel);  // auto-routes to fromModel()
+```
+
 ## Workflow
 
 1. **Identify Data Needs**: Look at the frontend component and determine what data it needs

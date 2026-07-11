@@ -3,6 +3,8 @@ title: 'ADR-NNNN: Title of the Architectural Decision'
 date: YYYY-MM-DD
 status: Draft | Accepted | Superseded
 deciders: Project lead, Development team
+project: Project Name
+repo: https://github.com/owner/repo
 version: '1.0'
 updated: YYYY-MM-DD
 html: ./html/YYYY-MM-DD-kebab-case-title.html
@@ -12,6 +14,7 @@ html: ./html/YYYY-MM-DD-kebab-case-title.html
 
 # ADR-NNNN: Title of the Architectural Decision
 
+- **Project:** Project Name — [GitHub](https://github.com/owner/repo)
 - **Date:** YYYY-MM-DD
 - **Status:** Draft | Accepted | Superseded
 - **Deciders:** Project lead, Development team
