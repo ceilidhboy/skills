@@ -2,19 +2,19 @@
 name: adr-creation
 description: Creates and maintains dual-format ADRs — Markdown (source of truth for agents) and HTML (rich explainer for humans with diagrams). Keeps both formats in sync on updates. Use when user says "create an ADR", "document this decision", "write an ADR", "ADR for X", or when creating or updating a file in docs/adr/.
 author: Mike Scott
-version: '1.1.0'
-updated: '2026-07-11'
+version: '2.0.0'
+updated: '2026-07-12'
 ---
 
 # ADR Creation (Dual Format)
 
 ## Core Principles
 
-1. **Markdown (`docs/adr/NNNN_YYYY-MM-DD_kebab-case-title.md`) is the source of truth.**
+1. **Markdown (`docs/adr/YYYY-MM-DD_kebab-case-title.md`) is the source of truth.**
    - This is what AI agents read.
    - Concise, technical, captures the essence of the decision.
 
-2. **HTML (`docs/adr/html/NNNN_YYYY-MM-DD_kebab-case-title.html`) is the human-facing explainer.**
+2. **HTML (`docs/adr/html/YYYY-MM-DD_kebab-case-title.html`) is the human-facing explainer.**
    - Richer, more detailed — includes SVG diagrams, explanatory prose, worked examples.
    - **Never a 1:1 translation of the markdown.** Expand freely to help non-technical humans understand.
    - Must convey the same information — never contradict the markdown — but go deeper on background, rationale, and visual presentation.
@@ -23,24 +23,20 @@ updated: '2026-07-11'
 
 ## File Naming
 
-Both files share the **same name** (after the number prefix), differing only by extension:
+Both files share the **same name**, differing only by extension:
 
 ```
 docs/adr/
-├── 0001_2026-07-11_three-layer-architecture.md
+├── 2026-07-11_three-layer-architecture.md
 └── html/
-    └── 0001_2026-07-11_three-layer-architecture.html
+    └── 2026-07-11_three-layer-architecture.html
 ```
 
-- **Format:** `NNNN_YYYY-MM-DD_kebab-case-title.md` / `.html`
-- **ADR number** (e.g., `0001`) is the first segment, zero-padded to 4 digits. Matches the `ADR-NNNN` number in the document title and frontmatter.
-- The ADR number segment ensures sequential sorting in directory listings (ADRs are created in sequence, so number order matches chronological order).
-- Underscore separates the number segment from the date, and the date from the title.
+- **Format:** `YYYY-MM-DD_kebab-case-title.md` / `.html`
+- The date prefix ensures chronological sorting in directory listings.
+- Underscore separates the date from the title.
 - All lowercase, kebab-case for the title.
-
-## Determining the ADR Number
-
-Scan all existing ADR markdown files in `docs/adr/` for the highest `ADR-NNNN` number in their content (title or frontmatter), then increment by one. The ADR number is per-repo.
+- **Do not use ADR numbering** — numbers clash across branches and create permanent links that break when numbers are reassigned or reordered. Refer to ADRs by date + title in cross-references (e.g. "see Three-Layer Architecture (2026-07-11)").
 
 ## Process: Creating a New ADR
 
@@ -60,13 +56,13 @@ Ask the user enough to understand:
 
 ### 2. Create the Markdown ADR
 
-Write to `docs/adr/NNNN_YYYY-MM-DD_kebab-title.md` (where `NNNN` is the zero-padded ADR number, e.g. `0001`).
+Write to `docs/adr/YYYY-MM-DD_kebab-title.md`.
 
 Use the template in the [Markdown Template](#markdown-template) section below.
 
 ### 3. Create the HTML ADR
 
-Write to `docs/adr/html/NNNN_YYYY-MM-DD_kebab-title.html`.
+Write to `docs/adr/html/YYYY-MM-DD_kebab-title.html`.
 
 Create the `html/` subdirectory if it doesn't exist.
 
@@ -113,7 +109,7 @@ Ensure both files still link to each other correctly.
 
 ```markdown
 ---
-title: 'ADR-NNNN: Short Decision Title'
+title: 'Short Decision Title'
 date: YYYY-MM-DD
 status: Draft | Accepted | Superseded
 deciders: Project lead, Development team
@@ -121,12 +117,12 @@ project: Project Name
 repo: https://github.com/owner/repo
 version: '1.0'
 updated: YYYY-MM-DD
-html: ./html/NNNN_YYYY-MM-DD_kebab-title.html
-# html_github: https://github.com/org/repo/blob/main/docs/adr/html/NNNN_YYYY-MM-DD_kebab-title.html
-# supersedes: ADR-NNNN
+html: ./html/YYYY-MM-DD_kebab-title.html
+# html_github: https://github.com/{owner}/{repo}/blob/HEAD/docs/adr/html/YYYY-MM-DD_kebab-title.html
+# supersedes: Previous ADR Title (YYYY-MM-DD)
 ---
 
-# ADR-NNNN: Short Decision Title
+# Short Decision Title
 
 - **Project:** Project Name — [GitHub](https://github.com/owner/repo)
 - **Date:** YYYY-MM-DD
@@ -155,7 +151,7 @@ What did we decide and why?
 
 ## Related
 
-- ADR-NNNN: [related decision]
+- Previous ADR Title (YYYY-MM-DD): [related decision]
 - [file paths or links to relevant code]
 ```
 
@@ -198,11 +194,13 @@ Use these tokens for consistent visual style across all HTML ADRs:
 When computing GitHub absolute URLs, use the pattern:
 
 ```
-https://github.com/{owner}/{repo}/blob/{default-branch}/docs/adr/NNNN_YYYY-MM-DD_kebab-title.md
-https://github.com/{owner}/{repo}/blob/{default-branch}/docs/adr/html/NNNN_YYYY-MM-DD_kebab-title.html
+https://github.com/{owner}/{repo}/blob/HEAD/docs/adr/YYYY-MM-DD_kebab-title.md
+https://github.com/{owner}/{repo}/blob/HEAD/docs/adr/html/YYYY-MM-DD_kebab-title.html
 ```
 
-Detect `{owner}` and `{repo}` from the git remote (`git remote get-url origin`). Use `master` or `main` as the default branch.
+Use `HEAD` instead of a branch name — it always resolves to the repository's default branch regardless of whether it's called `master`, `main`, or anything else.
+
+Detect `{owner}` and `{repo}` from the git remote (`git remote get-url origin`).
 
 ## Design Notes for the HTML
 

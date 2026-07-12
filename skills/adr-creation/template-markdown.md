@@ -1,5 +1,5 @@
 ---
-title: 'ADR-NNNN: Title of the Architectural Decision'
+title: 'Title of the Architectural Decision'
 date: YYYY-MM-DD
 status: Draft | Accepted | Superseded
 deciders: Project lead, Development team
@@ -7,12 +7,12 @@ project: Project Name
 repo: https://github.com/owner/repo
 version: '1.0'
 updated: YYYY-MM-DD
-html: ./html/NNNN_YYYY-MM-DD_kebab-case-title.html
-# html_github: https://github.com/org/repo/blob/main/docs/adr/html/NNNN_YYYY-MM-DD_kebab-case-title.html
-# supersedes: ADR-NNNN
+html: ./html/YYYY-MM-DD_kebab-case-title.html
+# html_github: https://github.com/org/repo/blob/HEAD/docs/adr/html/YYYY-MM-DD_kebab-case-title.html
+# supersedes: Previous ADR Title (YYYY-MM-DD)
 ---
 
-# ADR-NNNN: Title of the Architectural Decision
+# Title of the Architectural Decision
 
 - **Project:** Project Name — [GitHub](https://github.com/owner/repo)
 - **Date:** YYYY-MM-DD
@@ -56,6 +56,6 @@ Include concrete details:
 
 ## Related
 
-- ADR-NNNN: Related decision title
+- Previous ADR Title (YYYY-MM-DD): Related decision title
 - `path/to/relevant/file.php` — description of relevance
 - PR #NNN — implementation pull request
