@@ -7,8 +7,8 @@ project: Project Name
 repo: https://github.com/owner/repo
 version: '1.0'
 updated: YYYY-MM-DD
-html: ./html/YYYY-MM-DD-kebab-case-title.html
-# html_github: https://github.com/org/repo/blob/main/docs/adr/html/YYYY-MM-DD-kebab-case-title.html
+html: ./html/NNNN_YYYY-MM-DD_kebab-case-title.html
+# html_github: https://github.com/org/repo/blob/main/docs/adr/html/NNNN_YYYY-MM-DD_kebab-case-title.html
 # supersedes: ADR-NNNN
 ---
 

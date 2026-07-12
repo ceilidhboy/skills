@@ -10,11 +10,11 @@ updated: '2026-07-11'
 
 ## Core Principles
 
-1. **Markdown (`docs/adr/YYYY-MM-DD-title.md`) is the source of truth.**
+1. **Markdown (`docs/adr/NNNN_YYYY-MM-DD_kebab-case-title.md`) is the source of truth.**
    - This is what AI agents read.
    - Concise, technical, captures the essence of the decision.
 
-2. **HTML (`docs/adr/html/YYYY-MM-DD-title.html`) is the human-facing explainer.**
+2. **HTML (`docs/adr/html/NNNN_YYYY-MM-DD_kebab-case-title.html`) is the human-facing explainer.**
    - Richer, more detailed — includes SVG diagrams, explanatory prose, worked examples.
    - **Never a 1:1 translation of the markdown.** Expand freely to help non-technical humans understand.
    - Must convey the same information — never contradict the markdown — but go deeper on background, rationale, and visual presentation.
@@ -23,19 +23,20 @@ updated: '2026-07-11'
 
 ## File Naming
 
-Both files share the **same name**, differing only by extension:
+Both files share the **same name** (after the number prefix), differing only by extension:
 
 ```
 docs/adr/
-├── 2026-07-04-lightbox-declarative-full-size-images-workaround.md
+├── 0001_2026-07-11_three-layer-architecture.md
 └── html/
-    └── 2026-07-04-lightbox-declarative-full-size-images-workaround.html
+    └── 0001_2026-07-11_three-layer-architecture.html
 ```
 
-- **Format:** `YYYY-MM-DD-kebab-case-title.md` / `.html`
-- **ADR number** (e.g., `ADR-0010`) goes in the title heading and frontmatter — never in the filename.
-- The date prefix ensures chronological sorting in directory listings.
-- All lowercase, kebab-case.
+- **Format:** `NNNN_YYYY-MM-DD_kebab-case-title.md` / `.html`
+- **ADR number** (e.g., `0001`) is the first segment, zero-padded to 4 digits. Matches the `ADR-NNNN` number in the document title and frontmatter.
+- The ADR number segment ensures sequential sorting in directory listings (ADRs are created in sequence, so number order matches chronological order).
+- Underscore separates the number segment from the date, and the date from the title.
+- All lowercase, kebab-case for the title.
 
 ## Determining the ADR Number
 
@@ -59,13 +60,13 @@ Ask the user enough to understand:
 
 ### 2. Create the Markdown ADR
 
-Write to `docs/adr/YYYY-MM-DD-kebab-title.md`.
+Write to `docs/adr/NNNN_YYYY-MM-DD_kebab-title.md` (where `NNNN` is the zero-padded ADR number, e.g. `0001`).
 
 Use the template in the [Markdown Template](#markdown-template) section below.
 
 ### 3. Create the HTML ADR
 
-Write to `docs/adr/html/YYYY-MM-DD-kebab-title.html`.
+Write to `docs/adr/html/NNNN_YYYY-MM-DD_kebab-title.html`.
 
 Create the `html/` subdirectory if it doesn't exist.
 
@@ -120,8 +121,8 @@ project: Project Name
 repo: https://github.com/owner/repo
 version: '1.0'
 updated: YYYY-MM-DD
-html: ./html/YYYY-MM-DD-kebab-title.html
-# html_github: https://github.com/org/repo/blob/main/docs/adr/html/YYYY-MM-DD-kebab-title.html
+html: ./html/NNNN_YYYY-MM-DD_kebab-title.html
+# html_github: https://github.com/org/repo/blob/main/docs/adr/html/NNNN_YYYY-MM-DD_kebab-title.html
 # supersedes: ADR-NNNN
 ---
 
@@ -197,8 +198,8 @@ Use these tokens for consistent visual style across all HTML ADRs:
 When computing GitHub absolute URLs, use the pattern:
 
 ```
-https://github.com/{owner}/{repo}/blob/{default-branch}/docs/adr/YYYY-MM-DD-title.md
-https://github.com/{owner}/{repo}/blob/{default-branch}/docs/adr/html/YYYY-MM-DD-title.html
+https://github.com/{owner}/{repo}/blob/{default-branch}/docs/adr/NNNN_YYYY-MM-DD_kebab-title.md
+https://github.com/{owner}/{repo}/blob/{default-branch}/docs/adr/html/NNNN_YYYY-MM-DD_kebab-title.html
 ```
 
 Detect `{owner}` and `{repo}` from the git remote (`git remote get-url origin`). Use `master` or `main` as the default branch.
