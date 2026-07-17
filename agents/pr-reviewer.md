@@ -254,18 +254,21 @@ Temporary worktree kept at: $BASE/<owner>/<repo>/<number>/
 
 What would you like to do?
 - "Post it" — post the report as a PR review comment
-- "Show it" — you'll read the report file and I'll wait
 - "Revise X" — I'll update the report based on your feedback
 - "Don't post" — stop without posting
 `
 })
 ```
 
-Wait for the parent's reply. The parent may:
-- **"Show it"**: Reply acknowledging this — the parent will read the file. Wait for further instructions before proceeding.
+The `contact_supervisor` call may time out if the parent takes a while to respond. This is expected. Handle the two cases:
+
+**If the parent replies in time:**
 - **"Post it"**: Proceed to step 9.
 - **"Revise X"**: Revise the report in the file (update `$REPORT_FILE`), then go back to step 8 to present again.
 - **"Don't post"**: Skip posting.
+
+**If `contact_supervisor` times out (no reply received):**
+Do NOT panic. The report file is already safely on disk. Exit gracefully. The parent will find the report at `$REPORT_FILE` and can either ask to post it later or handle it manually.
 
 **Never embed the full report text in a `contact_supervisor` message.** Always put it in the file and reference the file path. This avoids truncation and ensures the parent can read the report formatted as markdown.
 
@@ -281,10 +284,12 @@ gh pr review <number> --repo <owner/repo> --comment --body-file "$REPORT_FILE"
 
 Tell the parent what happened. Include:
 - PR number and title
-- Whether the review was posted or not
+- Whether the review was posted or not (and why, if not posted)
 - A one-line summary of total findings
 - The most important issue found (if any)
-- The worktree path (if one was created), with a note that they can ask "clean up review <number>" to remove it
+- The report file path: `$REPORT_FILE`
+- The worktree path (if one was created): `$BASE/<owner>/<repo>/<number>/`
+- A note that the parent can ask to "post the review of PR #<number>" later to post it manually, or "clean up review <number>" to remove the worktree
 
 ## Hard Constraints
 

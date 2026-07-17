@@ -26,11 +26,23 @@ subagent({
 
 3. **Do not wait or block.** The agent will report back asynchronously when its review is ready. Continue responding to the user in the meantime.
 
-4. **Review the report and decide:**
+4. **If the agent contacts you for approval:** reply quickly with one of:
    - `Post it` — the agent posts the review as a PR comment
    - `Revise X` — the agent revises the report and presents again
    - `Don't post` — the agent stops without posting
 
-5. **Follow-up questions** — the temporary worktree stays in `/tmp/` so you (or the agent) can explore the codebase. Say `clean up review <number>` when done.
+5. **If the agent times out before you reply:** the `contact_supervisor` window is about 1–2 minutes. If it expires, the agent exits gracefully but leaves the report file on disk. Handle this when the user asks:
 
-The `pr-reviewer` agent handles everything: PR context, worktree management, sub-agent delegation, consolidation, sanitisation, and your approval flow.
+   **If the user says "post the review of PR #<number>" or similar:**
+   1. Determine the report file path: `$XDG_RUNTIME_DIR/pr-review/<owner>/<repo>/<number>/report.md` (or `/run/user/1000/pr-review/...`)
+   2. Verify the file exists
+   3. Post it: `gh pr review <number> --repo <owner/repo> --comment --body-file "<path>"`
+   4. Report back that it was posted
+
+   **If the user says "clean up review <number>" or "clean up all reviews":**
+   1. Run `rm -rf /run/user/1000/pr-review/<owner>/<repo>/<number>/` or `rm -rf "${XDG_RUNTIME_DIR}/pr-review/"`
+   2. If it was a worktree, also remove the git worktree: `cd <repo> && git worktree remove /run/user/1000/pr-review/...` and delete the temp branch
+
+6. **Follow-up questions** — if the worktree still exists, the user can ask about the codebase. Say `clean up review <number>` when done.
+
+The `pr-reviewer` agent handles the review itself; you handle the fallback if the agent times out before a decision.
