@@ -42,6 +42,15 @@ This will present an interactive picker — select the skills you want and which
 | wayfinder-conventions | Routing conventions — actions over named routes |
 | wayfinder-development | Laravel Wayfinder TypeScript route generation |
 | write-a-skill | Create new agent skills with proper structure |
+| pr-review | Review a GitHub PR using reviewer + oracle sub-agents — post findings as a PR review comment |
+
+## Custom Agents
+
+This repo also includes custom Pi sub-agents in [`agents/`](agents/). These are installed to `~/.pi/agent/agents/` via `link-agents.sh`.
+
+| Agent | Description |
+|---|---|
+| [pr-reviewer](agents/pr-reviewer.md) | Pull request review engine — delegates to reviewer + oracle, consolidates findings, posts comment |
 
 ## License
 
