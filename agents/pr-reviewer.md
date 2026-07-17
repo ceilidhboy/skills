@@ -71,22 +71,53 @@ Extract a compact summary: title, description, file list (path + additions + del
 
 ### 3. Determine review approach
 
-**If the local git remote matches target owner/repo:**
+First, discover whether the current directory is inside a git worktree by running:
 
-Create a temporary worktree. This is near-instant — it shares existing git objects without copying.
+```bash
+TOPLEVEL="$(git rev-parse --show-toplevel 2>/dev/null)" || TOPLEVEL=""
+```
 
-First, set the base path and clean any stale worktrees:
+This works from anywhere inside a git worktree — including bare-repo-with-worktrees layouts — because `git rev-parse --show-toplevel` follows the worktree's git directory pointer. It does NOT rely on finding a `.git` subdirectory in a parent.
+
+If `TOPLEVEL` is set, inspect the remote and current branch:
+
+```bash
+CURRENT_REMOTE="$(git remote get-url origin 2>/dev/null)"
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+```
+
+**Check 1 — Already on the PR branch and up to date:**
+
+If the remote matches the target owner/repo AND `CURRENT_BRANCH` matches the PR's `headRefName`, verify it's current and use it directly:
+
+```bash
+# Fetch to ensure up to date
+git fetch origin "$CURRENT_BRANCH" 2>/dev/null
+BEHIND="$(git rev-list --count HEAD..origin/"$CURRENT_BRANCH" 2>/dev/null)"
+if [ "$BEHIND" = "0" ]; then
+  WORKTREE_PATH="$TOPLEVEL"
+  echo "Already on PR branch, up to date — using current directory"
+fi
+```
+
+Set `WORKTREE_PATH="$TOPLEVEL"` and skip worktree creation. The reviewer + oracle children will use `cwd: "$WORKTREE_PATH"`.
+
+If the branch matches but is behind, fetch and fast-forward:
+
+```bash
+git merge --ff-only origin/"$CURRENT_BRANCH" 2>/dev/null
+WORKTREE_PATH="$TOPLEVEL"
+```
+
+**Check 2 — In the same repo but on a different branch:**
+
+If the remote matches but you're not on the PR branch, create a temporary worktree. This is near-instant — it shares existing git objects without copying:
 
 ```bash
 BASE="${XDG_RUNTIME_DIR:-/run/user/1000}/pr-review"
 mkdir -p "$BASE"
 # Remove worktrees older than 1 hour
 find "$BASE" -mindepth 3 -maxdepth 3 -type d -mmin +60 -exec rm -rf {} + 2>/dev/null || true
-```
-
-Then create the worktree:
-
-```bash
 # Fetch the PR branch as a local ref
 git fetch origin pull/<number>/head:refs/heads/pr-review-tmp-<number>
 mkdir -p "$BASE/<owner>/<repo>"
@@ -96,7 +127,7 @@ git worktree add "$BASE/<owner>/<repo>/<number>" pr-review-tmp-<number>
 
 Worktree path: `$BASE/<owner>/<repo>/<number>/`
 
-**If NOT in a repo with the right remote:**
+**Check 3 — Not in a repo with the right remote:**
 
 Report to the parent via `contact_supervisor`:
 
