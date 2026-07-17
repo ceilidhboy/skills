@@ -1,34 +1,35 @@
 ---
 name: pr-review
-description: Review a GitHub pull request using reviewer + oracle sub-agents and post findings as a PR review comment. Use when user says "review PR #N", "review pull request", "review this PR", or asks for a PR review.
+description: Review a GitHub pull request by creating a temporary worktree, running reviewer + oracle sub-agents, and asking for approval before posting. Use when user says "review PR #N", "review pull request", "review this PR", provides a PR URL, or asks for a PR review.
 ---
 
 # PR Review
 
 When asked to review a GitHub pull request:
 
-1. **Determine the PR number** — extract it from the user's request (e.g. "PR #44", "pull request 44")
-2. **Optionally determine the repo** — if the user mentions an owner/repo, note it
-3. **Launch the `pr-reviewer` sub-agent** with the PR number (and repo if given) as the task:
+1. **Parse the request** — extract the PR number and optional owner/repo from:
+   - `PR #44` (repo inferred from git remote)
+   - `PR #44 on owner/repo`
+   - `https://github.com/owner/repo/pull/44`
+   - `owner/repo#44`
+
+2. **Launch the `pr-reviewer` sub-agent** with the parsed information:
 
 ```javascript
 subagent({
   agent: "pr-reviewer",
-  task: "Review PR #<number>"
+  task: "PR #<number> on <owner/repo>"
+  // or: "https://github.com/owner/repo/pull/<number>"
 })
 ```
 
-If a repo was specified (e.g. `SociallyEnterprise/elody/shiftcore`), include it:
+3. **Wait for the agent to present its report** — it will gather PR context, create a temporary worktree (or ask whether to clone), run reviewer + oracle sub-agents, consolidate findings, and present the sanitised report to you via `contact_supervisor`.
 
-```javascript
-subagent({
-  agent: "pr-reviewer",
-  task: "Review PR #<number> on owner/repo"
-})
-```
+4. **Review the report and decide:**
+   - `Post it` — the agent posts the review as a PR comment
+   - `Revise X` — the agent revises the report and presents again
+   - `Don't post` — the agent stops without posting
 
-4. **Wait for the agent to complete** — the agent will gather PR context, delegate to sub-agents, consolidate findings, and present the report to you for approval via `contact_supervisor`.
-5. **Review the report** — read the consolidated findings the agent presents.
-6. **Decide** — either approve posting, request revisions, or decline.
+5. **Follow-up questions** — the temporary worktree stays in `/tmp/` so you (or the agent) can explore the codebase. Say `clean up review <number>` when done.
 
-The `pr-reviewer` agent handles everything: gathering PR context, delegating to reviewer + oracle, consolidating findings, and sanitising the report. It will ask you for approval before posting anything to the PR. You just need to pass the PR number and wait for it to present its findings.
+The `pr-reviewer` agent handles everything: PR context, worktree management, sub-agent delegation, consolidation, sanitisation, and your approval flow.
