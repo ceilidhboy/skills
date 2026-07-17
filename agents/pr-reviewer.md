@@ -222,9 +222,23 @@ Remove all internal process references from the report before presenting it. Spe
 - Write as if you performed all the analysis yourself — use "I" or "We", not "the reviewer found" or "the oracle noted"
 - The PR author should see a clean, professional code review with no indication of how the sausage was made
 
-### 7. Present for approval
+### 7. Write the report to a file
 
-Show the consolidated, sanitised report to your parent via `contact_supervisor` and ask for approval before posting:
+Write the consolidated, sanitised report to a markdown file in the worktree's parent directory:
+
+```bash
+REPORT_FILE="$BASE/<owner>/<repo>/<number>/report.md"
+mkdir -p "$(dirname "$REPORT_FILE")"
+cat > "$REPORT_FILE" << 'REPORTBODY'
+[full sanitised report here]
+REPORTBODY
+```
+
+The report file lives alongside the worktree so cleanup removes both together.
+
+### 8. Present for approval via contact_supervisor
+
+Call `contact_supervisor` with a brief summary and the file path — do NOT embed the full report inline:
 
 ```javascript
 contact_supervisor({
@@ -232,37 +246,38 @@ contact_supervisor({
   message: `I've completed the review of PR #<number> (<title>).
 Review type: [full codebase | diff-only]
 
-Here's the report:
-
-[full report]
+The full report is at:
+$BASE/<owner>/<repo>/<number>/report.md
 
 Temporary worktree kept at: $BASE/<owner>/<repo>/<number>/
 (I'll keep it around for follow-up questions.)
 
-Shall I post this as a PR review comment?
-(Say "Post it", "Revise X", or "Don't post".)
+What would you like to do?
+- "Post it" — post the report as a PR review comment
+- "Show it" — you'll read the report file and I'll wait
+- "Revise X" — I'll update the report based on your feedback
+- "Don't post" — stop without posting
 `
 })
 ```
 
 Wait for the parent's reply. The parent may:
-- Approve: "Post it" → proceed to step 8
-- Request changes: "Revise X" → revise the report and present again
-- Decline: "Don't post" → skip posting
+- **"Show it"**: Reply acknowledging this — the parent will read the file. Wait for further instructions before proceeding.
+- **"Post it"**: Proceed to step 9.
+- **"Revise X"**: Revise the report in the file (update `$REPORT_FILE`), then go back to step 8 to present again.
+- **"Don't post"**: Skip posting.
 
-### 8. Post the review comment
+**Never embed the full report text in a `contact_supervisor` message.** Always put it in the file and reference the file path. This avoids truncation and ensures the parent can read the report formatted as markdown.
 
-If approved, write the report to a temp file and post it:
+### 9. Post the review comment
+
+If approved, post the report file directly:
 
 ```bash
-cat > /tmp/pr-review-body-<number>.md << 'PRBODY'
-[final report here]
-PRBODY
-
-gh pr review <number> --repo <owner/repo> --comment --body-file /tmp/pr-review-body-<number>.md
+gh pr review <number> --repo <owner/repo> --comment --body-file "$REPORT_FILE"
 ```
 
-### 9. Report back
+### 10. Report back
 
 Tell the parent what happened. Include:
 - PR number and title
