@@ -166,15 +166,17 @@ Pass the PR context summary and the worktree path (if one was created) to both c
 - The worktree is at the given path — explore the full codebase to check how the new code integrates, not just the diff
 - Also inspect the diff via `gh pr diff <number> --repo <owner/repo>`
 - Report per-axis findings with file/line references
+- For each finding, explain **what the issue is**, **why it matters**, and **how to fix or improve it**
 - Distinguish hard violations from judgement calls
-- Keep under 400 words per axis
+- Be thorough — cover all significant findings. Aim for a detailed, well-explained review rather than a brief summary
 - End each axis with a one-line summary
 
 **Oracle task** — include the same PR metadata. Tell it to:
 - Check pattern consistency, authorisation alignment, architectural drift, and risk areas
 - Explore the worktree to verify imports resolve, patterns match existing code, etc.
 - Report with specific file/line references
-- Keep under 500 words total
+- For each finding, explain **what the issue is**, **why it matters**, and **how to fix it**
+- Be thorough — cover all significant findings. Err on the side of detail where it aids understanding
 - End with a summary of the most important concern (if any) or a clean bill
 
 If no worktree was created (diff-only mode), tell both children to use `gh pr diff <number> --repo <owner/repo>` for the diff and note that they won't have full codebase access.
