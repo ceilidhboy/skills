@@ -13,17 +13,18 @@ When asked to review a GitHub pull request:
    - `https://github.com/owner/repo/pull/44`
    - `owner/repo#44`
 
-2. **Launch the `pr-reviewer` sub-agent** with the parsed information:
+2. **Launch the `pr-reviewer` sub-agent asynchronously** with the parsed information — this keeps the main conversation responsive:
 
 ```javascript
 subagent({
   agent: "pr-reviewer",
-  task: "PR #<number> on <owner/repo>"
+  task: "PR #<number> on <owner/repo>",
+  async: true
   // or: "https://github.com/owner/repo/pull/<number>"
 })
 ```
 
-3. **Wait for the agent to present its report** — it will gather PR context, create a temporary worktree (or ask whether to clone), run reviewer + oracle sub-agents, consolidate findings, and present the sanitised report to you via `contact_supervisor`.
+3. **Do not wait or block.** The agent will report back asynchronously when its review is ready. Continue responding to the user in the meantime.
 
 4. **Review the report and decide:**
    - `Post it` — the agent posts the review as a PR comment
