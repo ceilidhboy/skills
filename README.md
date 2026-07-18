@@ -8,61 +8,25 @@ Agent skills for Laravel and PHP development. Compatible with Pi, Claude Code, C
 
 ## Installation
 
-> This repo includes **skills** (for the Pi main agent) and **custom sub-agents** (reusable specialist sub-agents). Most users only need the skills. The custom sub-agents are only needed if you use the `pr-review` skill.
-
-### Install skills
-
 ```bash
 npx skills@latest add ceilidhboy/skills
 ```
 
-Select the skills you want when prompted. Installing `pr-review` also makes the `pr-reviewer` sub-agent available.
+Select the skills you want when prompted.
 
-### Install custom sub-agents (optional)
-
-Only needed if you installed the `pr-review` skill above. Skip this if you didn't.
-
-1. Clone the repo to a permanent location:
-
-   ```bash
-   git clone git@github.com:ceilidhboy/skills.git ~/.pi/skills-source
-   cd ~/.pi/skills-source
-   ```
-
-2. Symlink the sub-agents into Pi:
-
-   ```bash
-   bash scripts/link-agents.sh
-   ```
-
-3. Run `/reload` in Pi (or restart Pi if you prefer).
-
-**Keep the clone in place.** The script creates symlinks, so the clone must stay for the agents to work.
-
-### 🚨 Updating the custom agents
-
-Pi handles skill and extension updates automatically via:
+For local development, run from the repo root to link skills:
 
 ```bash
-pi update --extensions
+./scripts/link-skills.sh
 ```
 
-The custom sub-agents in this repo are **not** managed by Pi's extension system, so they need a manual refresh when the repo updates:
+After installing or updating, run `/reload` in Pi.
 
-```bash
-cd ~/.pi/skills-source
-git pull
-bash scripts/link-agents.sh
-```
-
-After updating, run `/reload` in Pi.
-
-If you have the repo cloned for development, both scripts create symlinks so edits take effect after `/reload`:
-
-```bash
-./scripts/link-skills.sh    # link skills to ~/.agents/skills/
-./scripts/link-agents.sh   # link agents to ~/.pi/agent/agents/
-```
+> Looking for Pi-specific skills and custom sub-agents? They've moved to dedicated Pi packages:
+> - [pi-pr-reviewer](https://github.com/ceilidhboy/pi-pr-reviewer) — PR review agent + skill for Pi
+> - [pi-agent-workflows](https://github.com/ceilidhboy/pi-agent-workflows) — Orchestrator-mode and delegation skills for Pi
+> 
+> These are installed via `pi install`, not the skills installer.
 
 ## Skills
 
@@ -77,9 +41,7 @@ If you have the repo cloned for development, both scripts create symlinks so edi
 | html-output | Generate self-contained HTML documents with inline SVG diagrams, grids, and colour styling — the html-output skill. Use when visual presentation benefits understanding |
 | inertia-react-development | Inertia.js v2 React client-side development |
 | javascript-typescript-conventions | JS/TS coding conventions and best practices |
-| orchestrator-mode | Strict orchestrator agent instructions |
 | pest-testing | Pest 4 PHP testing framework |
-| pr-review | Review a GitHub PR using reviewer + oracle sub-agents — post findings as a PR review comment |
 | refactor-comments-that-are-code-smells | Code quality — refactor comments that explain what code does |
 | routing-and-controllers | Laravel controllers, routes, and Wayfinder mapping |
 | settings-system | Multi-tenant polymorphic settings system with agency-scoped records and global fallback chain |
@@ -93,14 +55,6 @@ If you have the repo cloned for development, both scripts create symlinks so edi
 | wayfinder-conventions | Routing conventions — actions over named routes |
 | wayfinder-development | Laravel Wayfinder TypeScript route generation |
 | write-a-skill | Create new agent skills with proper structure |
-
-## Custom Agents
-
-This repo also includes custom Pi sub-agents in [`agents/`](agents/). These are installed to `~/.pi/agent/agents/` via `link-agents.sh`.
-
-| Agent | Description |
-|---|---|
-| [pr-reviewer](agents/pr-reviewer.md) | Pull request review engine — delegates to reviewer + oracle, consolidates findings, posts comment |
 
 ## License
 
