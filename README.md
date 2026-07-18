@@ -43,10 +43,10 @@ Only needed if you installed the `pr-review` skill above. Skip this if you didn'
 
 When the repo receives updates, refresh your installed skills and agents.
 
-**Skills** update automatically:
+**Skills** update via Pi's extension manager:
 
 ```bash
-npx skills@latest update
+pi update --extensions
 ```
 
 **Custom sub-agents** need a manual update:
