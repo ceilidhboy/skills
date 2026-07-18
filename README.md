@@ -35,18 +35,33 @@ Only needed if you installed the `pr-review` skill above. Skip this if you didn'
    bash scripts/link-agents.sh
    ```
 
-3. Restart Pi.
+3. Run `/reload` in Pi (or restart Pi if you prefer).
 
-**Keep the clone in place.** The script creates symlinks, so the clone must stay for the agents to work. To update later:
+**Keep the clone in place.** The script creates symlinks, so the clone must stay for the agents to work.
+
+### 🚨 Updating
+
+When the repo receives updates, refresh your installed skills and agents.
+
+**Skills** update automatically:
 
 ```bash
-cd ~/.pi/skills-source && git pull
-# Then restart Pi
+npx skills@latest update
 ```
+
+**Custom sub-agents** need a manual update:
+
+```bash
+cd ~/.pi/skills-source
+git pull
+bash scripts/link-agents.sh
+```
+
+After updating either, run `/reload` in Pi.
 
 ### Local development
 
-If you have the repo cloned for development, both scripts create symlinks so edits take effect after a Pi restart:
+If you have the repo cloned for development, both scripts create symlinks so edits take effect after `/reload`:
 
 ```bash
 ./scripts/link-skills.sh    # link skills to ~/.agents/skills/
