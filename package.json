@@ -9,6 +9,10 @@
   },
   "license": "MIT",
   "packageManager": "npm@10.9.4",
+  "scripts": {
+    "postinstall": "bash scripts/link-agents.sh",
+    "link": "bash scripts/link-skills.sh && bash scripts/link-agents.sh"
+  },
   "pi": {
     "skills": ["./skills"]
   }
