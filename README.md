@@ -12,7 +12,24 @@ Agent skills for Laravel and PHP development. Compatible with Pi, Claude Code, C
 npx skills@latest add ceilidhboy/skills
 ```
 
-This will present an interactive picker — select the skills you want and which agents to install them on.
+This installs skills only. This repo also includes **custom sub-agents** in `agents/` which must be installed separately:
+
+```bash
+# Clone the repo and link the custom agents
+cd /tmp
+git clone git@github.com:ceilidhboy/skills.git ceilidhboy-skills
+cd ceilidhboy-skills
+bash scripts/link-agents.sh
+```
+
+If you have the repo cloned locally for development, run both scripts from the repo root:
+
+```bash
+./scripts/link-skills.sh    # link skills to ~/.agents/skills/
+./scripts/link-agents.sh   # link agents to ~/.pi/agent/agents/
+```
+
+Both scripts create symlinks so edits take effect after a Pi restart.
 
 ## Skills
 
