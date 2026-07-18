@@ -8,28 +8,46 @@ Agent skills for Laravel and PHP development. Compatible with Pi, Claude Code, C
 
 ## Installation
 
+> This repo includes **skills** (for the Pi main agent) and **custom sub-agents** (reusable specialist sub-agents). Most users only need the skills. The custom sub-agents are only needed if you use the `pr-review` skill.
+
+### Install skills
+
 ```bash
 npx skills@latest add ceilidhboy/skills
 ```
 
-This installs skills only. This repo also includes **custom sub-agents** in `agents/` which must be installed separately:
+Select the skills you want when prompted. Installing `pr-review` also makes the `pr-reviewer` sub-agent available.
 
-```bash
-# Clone the repo and link the custom agents
-cd /tmp
-git clone git@github.com:ceilidhboy/skills.git ceilidhboy-skills
-cd ceilidhboy-skills
-bash scripts/link-agents.sh
-```
+### Install custom sub-agents (optional)
 
-If you have the repo cloned locally for development, run both scripts from the repo root:
+Only needed if you installed the `pr-review` skill above. Skip this if you didn't.
+
+1. Clone the repo:
+
+   ```bash
+   cd /tmp
+   git clone git@github.com:ceilidhboy/skills.git ceilidhboy-skills
+   cd ceilidhboy-skills
+   ```
+
+2. Link the sub-agents to Pi:
+
+   ```bash
+   bash scripts/link-agents.sh
+   ```
+
+3. Restart Pi.
+
+### Local development
+
+If you have the repo cloned for development, run both scripts from the repo root:
 
 ```bash
 ./scripts/link-skills.sh    # link skills to ~/.agents/skills/
 ./scripts/link-agents.sh   # link agents to ~/.pi/agent/agents/
 ```
 
-Both scripts create symlinks so edits take effect after a Pi restart.
+Both create symlinks so edits take effect after a Pi restart.
 
 ## Skills
 
