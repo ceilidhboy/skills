@@ -39,17 +39,15 @@ Only needed if you installed the `pr-review` skill above. Skip this if you didn'
 
 **Keep the clone in place.** The script creates symlinks, so the clone must stay for the agents to work.
 
-### 🚨 Updating
+### 🚨 Updating the custom agents
 
-When the repo receives updates, refresh your installed skills and agents.
-
-**Skills** update via Pi's extension manager:
+Pi handles skill and extension updates automatically via:
 
 ```bash
 pi update --extensions
 ```
 
-**Custom sub-agents** need a manual update:
+The custom sub-agents in this repo are **not** managed by Pi's extension system, so they need a manual refresh when the repo updates:
 
 ```bash
 cd ~/.pi/skills-source
@@ -57,9 +55,7 @@ git pull
 bash scripts/link-agents.sh
 ```
 
-After updating either, run `/reload` in Pi.
-
-### Local development
+After updating, run `/reload` in Pi.
 
 If you have the repo cloned for development, both scripts create symlinks so edits take effect after `/reload`:
 
