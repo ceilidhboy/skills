@@ -10,7 +10,7 @@
   "license": "MIT",
   "packageManager": "npm@10.9.4",
   "scripts": {
-    "postinstall": "bash scripts/link-agents.sh",
+    "postinstall": "if [ -d \"$HOME/.agents/skills/pr-review\" ]; then bash scripts/link-agents.sh; fi",
     "link": "bash scripts/link-skills.sh && bash scripts/link-agents.sh"
   },
   "pi": {
