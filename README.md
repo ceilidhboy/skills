@@ -22,14 +22,14 @@ Select the skills you want when prompted. Installing `pr-review` also makes the 
 
 Only needed if you installed the `pr-review` skill above. Skip this if you didn't.
 
-1. Clone the repo to a permanent location (the scripts will copy the files, so you can delete the clone afterwards):
+1. Clone the repo to a permanent location:
 
    ```bash
    git clone git@github.com:ceilidhboy/skills.git ~/.pi/skills-source
    cd ~/.pi/skills-source
    ```
 
-2. Install the sub-agents:
+2. Symlink the sub-agents into Pi:
 
    ```bash
    bash scripts/link-agents.sh
@@ -37,16 +37,21 @@ Only needed if you installed the `pr-review` skill above. Skip this if you didn'
 
 3. Restart Pi.
 
-### Local development
-
-If you have the repo cloned for development, run both scripts from the repo root:
+**Keep the clone in place.** The script creates symlinks, so the clone must stay for the agents to work. To update later:
 
 ```bash
-./scripts/link-skills.sh    # copy skills to ~/.agents/skills/
-./scripts/link-agents.sh   # copy agents to ~/.pi/agent/agents/
+cd ~/.pi/skills-source && git pull
+# Then restart Pi
 ```
 
-Both copy files (not symlinks) so edits take effect after a Pi restart. Run again to pick up changes.
+### Local development
+
+If you have the repo cloned for development, both scripts create symlinks so edits take effect after a Pi restart:
+
+```bash
+./scripts/link-skills.sh    # link skills to ~/.agents/skills/
+./scripts/link-agents.sh   # link agents to ~/.pi/agent/agents/
+```
 
 ## Skills
 
