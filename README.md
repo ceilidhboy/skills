@@ -29,6 +29,7 @@ This will present an interactive picker — select the skills you want and which
 | javascript-typescript-conventions | JS/TS coding conventions and best practices |
 | orchestrator-mode | Strict orchestrator agent instructions |
 | pest-testing | Pest 4 PHP testing framework |
+| pr-review | Review a GitHub PR using reviewer + oracle sub-agents — post findings as a PR review comment |
 | refactor-comments-that-are-code-smells | Code quality — refactor comments that explain what code does |
 | routing-and-controllers | Laravel controllers, routes, and Wayfinder mapping |
 | settings-system | Multi-tenant polymorphic settings system with agency-scoped records and global fallback chain |
@@ -42,7 +43,6 @@ This will present an interactive picker — select the skills you want and which
 | wayfinder-conventions | Routing conventions — actions over named routes |
 | wayfinder-development | Laravel Wayfinder TypeScript route generation |
 | write-a-skill | Create new agent skills with proper structure |
-| pr-review | Review a GitHub PR using reviewer + oracle sub-agents — post findings as a PR review comment |
 
 ## Custom Agents
 
