@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{Client} – Website Development Report | {Range}</title>
+<style>
+:root {
+  --ivory:   #FAF9F5;
+  --slate:   #141413;
+  --clay:    #D97757;
+  --oat:     #E3DACC;
+  --olive:   #788C5D;
+  --rust:    #B04A3F;
+  --gray-150:#F0EEE6;
+  --gray-300:#D1CFC5;
+  --gray-500:#87867F;
+  --gray-700:#3D3D3A;
+  --white:   #FFFFFF;
+  --serif: ui-serif, Georgia, 'Times New Roman', serif;
+  --sans:  system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono:  ui-monospace, 'SF Mono', Menlo, Monaco, monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--ivory); color: var(--gray-700);
+  font-family: var(--sans); font-size: 15px; line-height: 1.6;
+  padding: 56px 32px 120px;
+}
+.container { max-width: 980px; margin: 0 auto; }
+
+/* Header */
+.report-header { margin-bottom: 56px; }
+.report-header .meta {
+  font-family: var(--mono); font-size: 11px; text-transform: uppercase;
+  color: var(--gray-500); letter-spacing: 0.08em; margin-bottom: 8px;
+}
+.report-header h1 {
+  font-family: var(--serif); font-size: 36px; font-weight: 500;
+  color: var(--slate); line-height: 1.2; margin-bottom: 6px;
+}
+.report-header .subtitle { font-size: 17px; color: var(--gray-500); }
+.report-header .org { margin-top: 16px; display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--gray-500); }
+
+/* Sections */
+section { margin-bottom: 56px; }
+h2 {
+  font-family: var(--serif); font-size: 24px; font-weight: 500;
+  color: var(--slate); margin-bottom: 16px; padding-bottom: 8px;
+  border-bottom: 1.5px solid var(--gray-300);
+}
+h3 {
+  font-family: var(--serif); font-size: 19px; font-weight: 500;
+  color: var(--slate); margin-top: 28px; margin-bottom: 10px;
+}
+p { margin-bottom: 12px; }
+
+/* Cards */
+.card {
+  background: var(--white); border: 1.5px solid var(--gray-300);
+  border-radius: 12px; padding: 24px; margin-bottom: 20px;
+}
+.card-status {
+  display: inline-block; font-family: var(--mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 3px 8px; border-radius: 4px; margin-bottom: 8px;
+}
+.card-status.live { background: #e4f0da; color: #3d6b2a; }
+.card-status.wip  { background: #fef0d9; color: #9a6e1a; }
+.card-status.secure { background: #dbeafe; color: #1a56a0; }
+
+/* Date range badge */
+.date-range {
+  font-family: var(--mono); font-size: 11px; color: var(--gray-500);
+  margin-bottom: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.date-range .dot { color: var(--gray-300); }
+.date-range strong { color: var(--slate); font-weight: 600; }
+.date-range .live-date {
+  display: inline-block; background: #e4f0da; color: #3d6b2a;
+  padding: 2px 8px; border-radius: 4px; font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+
+/* Glossary */
+.glossary {
+  display: grid; grid-template-columns: auto 1fr; gap: 6px 18px;
+  font-size: 13px; margin: 12px 0 16px;
+  background: var(--gray-150); border: 1.5px solid var(--gray-300);
+  border-radius: 12px; padding: 16px 20px;
+}
+.glossary dt {
+  font-family: var(--mono); font-size: 11.5px; color: var(--slate);
+  font-weight: 600; white-space: nowrap;
+}
+.glossary dd { color: var(--gray-500); }
+
+/* PR Box */
+.pr-box {
+  background: var(--white); border: 1.5px solid var(--gray-300);
+  border-radius: 12px; padding: 16px 20px; margin: 10px 0 16px;
+}
+.pr-box .pr-header {
+  display: flex; justify-content: space-between; align-items: center;
+  flex-wrap: wrap; gap: 8px; margin-bottom: 8px;
+}
+.pr-box .pr-number { font-family: var(--mono); font-size: 11px; color: var(--gray-500); }
+.pr-box .pr-title { font-family: var(--serif); font-size: 15px; font-weight: 500; color: var(--slate); }
+.pr-box .pr-body { font-size: 13.5px; color: var(--gray-700); line-height: 1.55; }
+.pr-box .pr-stats {
+  display: flex; gap: 12px; margin-top: 8px;
+  font-family: var(--mono); font-size: 11px; color: var(--gray-500);
+}
+
+/* Timeline */
+.timeline {
+  position: relative; padding-left: 28px; margin: 16px 0;
+}
+.timeline::before {
+  content: ''; position: absolute; left: 8px; top: 0; bottom: 0; width: 2px; background: var(--gray-300);
+}
+.timeline-item { position: relative; margin-bottom: 20px; }
+.timeline-item::before {
+  content: ''; position: absolute; left: -24px; top: 6px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--clay); border: 2px solid var(--ivory);
+}
+.timeline-item .date {
+  font-family: var(--mono); font-size: 11px; color: var(--gray-500); display: block; margin-bottom: 2px;
+}
+.timeline-item .summary { font-size: 14px; font-weight: 500; color: var(--slate); }
+.timeline-item .detail { font-size: 13px; color: var(--gray-500); margin-top: 2px; }
+
+/* Callout */
+.callout {
+  border-left: 4px solid var(--clay); background: var(--white);
+  border-radius: 0 12px 12px 0; padding: 20px 24px; margin: 20px 0;
+}
+.callout.green { border-left-color: var(--olive); }
+.callout-title {
+  font-family: var(--mono); font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--gray-500); margin-bottom: 6px;
+}
+
+/* Stats row */
+.stats-row { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; }
+.stat-card {
+  background: var(--white); border: 1.5px solid var(--gray-300);
+  border-radius: 10px; padding: 14px 20px; text-align: center; min-width: 100px;
+}
+.stat-card .number { font-family: var(--serif); font-size: 28px; font-weight: 500; color: var(--slate); }
+.stat-card .label {
+  font-family: var(--mono); font-size: 10px; text-transform: uppercase;
+  color: var(--gray-500); letter-spacing: 0.06em;
+}
+
+/* Chips */
+.chip-group { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.chip {
+  font-family: var(--mono); font-size: 11.5px; background: var(--gray-150);
+  border: 1.5px solid var(--gray-300); border-radius: 8px; padding: 4px 10px; white-space: nowrap;
+}
+.chip strong { color: var(--slate); font-weight: 600; }
+
+/* Responsive */
+@media (max-width: 640px) {
+  body { padding: 32px 16px 80px; }
+  .stats-row { justify-content: center; }
+  .report-header h1 { font-size: 28px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+<header class="report-header">
+  <div class="meta">Development Activity Report</div>
+  <h1>{Client} Website</h1>
+  <p class="subtitle">A summary of all website improvements, bug fixes, security upgrades, and maintenance work carried out between {Start date} and {End date}.</p>
+  <div class="org">
+    <span>Prepared for <strong>{Client}</strong> by {Team name} · {Report date}</span>
+  </div>
+</header>
+
+<!-- ==================== EXECUTIVE SUMMARY ==================== -->
+<section>
+  <h2>Executive Summary</h2>
+  <div class="stats-row">
+    <div class="stat-card"><div class="number">{PR count}</div><div class="label">Pull Requests</div></div>
+    <div class="stat-card"><div class="number">{Lines changed}</div><div class="label">Lines Changed</div></div>
+    <div class="stat-card"><div class="number">{Bug fixes}</div><div class="label">Bugs Fixed</div></div>
+    <div class="stat-card"><div class="number">{Features}</div><div class="label">Features Added</div></div>
+    <div class="stat-card"><div class="number">{Security}</div><div class="label">Security Upgrades</div></div>
+    <div class="stat-card"><div class="number">{WIP branches}</div><div class="label">WIP Branches</div></div>
+  </div>
+  <p>Over the past {duration}, we've made <strong>{PR count} pull requests</strong> (code changes) to the {Client} website, covering a wide range of work — from behind-the-scenes security upgrades to visible improvements your website visitors can see and use.</p>
+  <div class="callout">
+    <div class="callout-title">🏆 Most Significant Achievements</div>
+    <ul style="margin: 8px 0 0 20px; font-size: 14px;">
+      {achievements}
+    </ul>
+  </div>
+</section>
+
+{content}
+
+<!-- ==================== TIMELINE ==================== -->
+<section>
+  <h2>Timeline of Key Milestones</h2>
+  <div class="timeline">
+    {timeline}
+  </div>
+</section>
+
+<!-- ==================== WORK IN PROGRESS ==================== -->
+<section>
+  <h2>Work Still in Progress</h2>
+  <p><em>Features and fixes that are currently being developed and have not yet been released to the live website.</em></p>
+  {wip}
+</section>
+
+<footer style="margin-top: 64px; padding-top: 24px; border-top: 1.5px solid var(--gray-300); font-size: 13px; color: var(--gray-500);">
+  <p><strong>Report prepared by {Team name}</strong> · Generated {Report date} · Based on analysis of {commit count} commits across {PR count} pull requests.</p>
+  <p style="margin-top: 12px;">Technologies used: {tech stack}.</p>
+</footer>
+
+</div>
+</body>
+</html>

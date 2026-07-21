@@ -54,6 +54,7 @@ After installing or updating, run `/reload` in Pi.
 | unexpected-situations | Stop and consult when encountering unexpected situations |
 | wayfinder-conventions | Routing conventions — actions over named routes |
 | wayfinder-development | Laravel Wayfinder TypeScript route generation |
+| monthly-report-generator | Generate monthly development reports for clients from git history, PRs, and ADRs — HTML for web, Markdown for email, optional wiki publishing |
 | write-a-skill | Create new agent skills with proper structure |
 
 ## License
