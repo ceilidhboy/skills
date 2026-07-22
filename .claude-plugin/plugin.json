@@ -14,6 +14,7 @@
     "./skills/pest-testing-conventions",
     "./skills/refactor-comments-that-are-code-smells",
     "./skills/routing-and-controllers",
+    "./skills/serena-mcp-selection",
     "./skills/settings-system",
     "./skills/single-task-responsibility",
     "./skills/spatie-data-transfer-objects",
