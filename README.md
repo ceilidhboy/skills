@@ -56,6 +56,7 @@ After installing or updating, run `/reload` in Pi.
 | wayfinder-development | Laravel Wayfinder TypeScript route generation |
 | monthly-report-generator | Generate monthly development reports for clients from git history, PRs, and ADRs — HTML for web, Markdown for email, optional wiki publishing |
 | write-a-skill | Create new agent skills with proper structure |
+| writing-skills-readme-first | Check the user's personal skills repo before creating new skills. Use `write-a-skill` for the template |
 
 ## License
 
