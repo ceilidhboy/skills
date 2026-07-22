@@ -11,7 +11,6 @@
     "./skills/inertia-react-conventions",
     "./skills/javascript-typescript-conventions",
     "./skills/monthly-report-generator",
-    "./skills/orchestrator-mode",
     "./skills/pest-testing-conventions",
     "./skills/refactor-comments-that-are-code-smells",
     "./skills/routing-and-controllers",
@@ -24,6 +23,7 @@
     "./skills/troubleshooting-frontend",
     "./skills/unexpected-situations",
     "./skills/wayfinder-conventions",
-    "./skills/write-a-skill"
+    "./skills/write-a-skill",
+    "./skills/writing-skills-readme-first"
   ]
 }
