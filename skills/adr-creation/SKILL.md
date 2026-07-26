@@ -44,13 +44,23 @@ Write to `docs/adr/YYYY-MM-DD_kebab-title.md`. Use the template in
 Write to `docs/adr/html/YYYY-MM-DD_kebab-title.html`. The HTML should:
 - Expand freely — diagrams, narrative, safety checks. Never contradict the markdown.
 - Follow the **section order** below.
-- Use the design system in [html-design-system.md](html-design-system.md) — CSS tokens,
-  callout boxes, status badges, metadata grid.
-- Follow the narrative guide in [html-narrative-guide.md](html-narrative-guide.md) —
-  audience, story examples, readability principles, before/after diagrams.
 - Be self-contained (single HTML file, no external dependencies).
 
-Delegate to the `html-output` skill if available for boilerplate and SVG conventions.
+### Design system and SVG conventions
+
+**YOU MUST check whether the `html-output` skill is installed.** If it is, read its
+`references/DESIGN_SYSTEM.md` for the canonical CSS tokens, colour palette,
+typography, spacing, and CSS patterns — and its `references/SVG_GUIDELINES.md`
+for SVG diagram conventions (figure structure, common diagram types, flowcharts,
+timelines). These are the authoritative sources and take precedence over the
+bundled fallback.
+
+If `html-output` is NOT installed, fall back to the bundled
+[html-design-system.md](html-design-system.md) — an abridged subset of the
+design system sufficient for standalone ADR creation.
+
+Follow the narrative guide in [html-narrative-guide.md](html-narrative-guide.md) —
+audience, story examples, readability principles, before/after diagrams.
 
 #### HTML section order
 
@@ -96,5 +106,5 @@ Use `HEAD` (not a branch name). Derive `{owner}` and `{repo}` from `git remote g
 
 - [template-markdown.md](template-markdown.md) — Markdown template
 - [template-html.html](template-html.html) — HTML boilerplate
-- [html-design-system.md](html-design-system.md) — CSS tokens, visual style rules
 - [html-narrative-guide.md](html-narrative-guide.md) — Audience, story examples, readability principles, before/after diagrams
+- [html-design-system.md](html-design-system.md) — CSS tokens, visual style rules (fallback; superseded by `html-output/references/DESIGN_SYSTEM.md` when the `html-output` skill is installed)
