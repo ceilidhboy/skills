@@ -17,7 +17,14 @@ updated: '2026-07-19'
    Rich, narrative, with diagrams. **Lead with the problem** — open with a concrete
    before-state so the reader feels the pain before learning the fix.
 
-3. **Keep both in sync.** Stale HTML is worse than no HTML.
+3. **HTML targets non-technical readers.** The markdown is for developers and AI
+   agents — concise, technical, assumes domain knowledge. The HTML is for sending
+   to clients, stakeholders, project managers, and non-programming colleagues.
+   Include explainers for concepts the markdown takes for granted. If you must use
+   a technical term, define it inline. Use analogies. Assume the reader knows the
+   business problem but not the code.
+
+4. **Keep both in sync.** Stale HTML is worse than no HTML.
 
 ## File Naming
 
@@ -65,7 +72,9 @@ audience, story examples, readability principles, before/after diagrams.
 #### HTML section order
 
 1. **Problem in plain English** — Concrete before-state example. A story that answers
-   "why should I care?"
+   "why should I care?" Assume your reader is a project manager or client — they
+   know the business problem but not the code or terminology. Define technical terms
+   inline.
 2. **Why it happened** — Root cause in lay terms. Before/after flow diagrams.
 3. **What we changed** — The fix or improvement. Include any safety guards added.
 4. **Consequences** — Positive outcomes and trade-offs, in plain language.
