@@ -10,8 +10,8 @@ description: >-
   using well-understood terminology.
 compatibility: Any agent harness supporting HTML output
 author: Mike Scott
-version: '1.0.0'
-updated: '2026-07-11'
+version: '1.1.0'
+updated: '2026-08-04'
 ---
 
 # HTML Output
@@ -22,11 +22,28 @@ below as needed for the specific task.
 
 ## Output Location
 
-Resolve the output directory using this fallback chain:
+Resolve the output directory in this order — **derive it from the task first;
+only fall back to configuration when the destination is not obvious.**
 
-1. **Environment variable** `PI_HTML_OUTPUT_DIR` — if set, use this path
-2. **Pi global settings** — check `htmlOutputDir` key in `~/.pi/agent/settings.json`
-3. **Fallback** — use `~/.pi/agent/html-output/` (creates it if needed)
+1. **Task-derived destination** — when the workflow makes the destination
+   explicit, use it and skip all configuration:
+   - ADR creation → the project's ADR HTML directory (see the `adr-creation`
+     skill; mirror where the project's existing ADR markdown lives, e.g.
+     `wip/docs/adr/` → `wip/docs/adr/html/`).
+   - The user names a destination → use exactly that.
+   - The source document lives in the repo (e.g. `docs/mvp/`) → a sibling
+     `html/` subdirectory next to it.
+2. **Project settings** — `htmlOutputDir` in the project's `.pi/settings.json`
+   (project-scoped custom convention).
+3. **Global settings** — `htmlOutputDir` in `~/.pi/agent/settings.json`
+   (machine-wide default; must be a general-purpose directory, never a
+   project-specific path).
+4. **Fallback** — use `~/.pi/agent/html-output/` (creates it if needed).
+
+The configured directories are fallbacks for ambiguous output, not the
+primary mechanism. Never write a project-specific path (e.g. a client repo's
+`docs/adr/html`) into the global settings file — that leaks one project's
+layout into every other project's sessions.
 
 Name files descriptively, e.g. `oauth-flows-explainer.html`.
 
@@ -80,21 +97,31 @@ clickable WSL link.
 
 Prefer this option when the project files live directly on the WSL filesystem
 and don't have a C: drive equivalent. The agent outputs the HTML file to the
-project's `docs/adr/html/` directory (not to a separate Pi Output directory).
+project's ADR HTML directory (e.g. `docs/adr/html/`) — that destination is
+task-derived, not configured.
 
 **Setup instructions for Pi agents:** When a user says "set up HTML output"
 or "I'm on Windows/WSL and the links don't work", do this:
 
-1. Check if `htmlOutputDir` is already set in `~/.pi/agent/settings.json`
-2. If using a C: drive path:
+1. Check where `htmlOutputDir` is currently set — project `.pi/settings.json`
+   first, then `~/.pi/agent/settings.json`.
+2. If the destination is task-derived (ADR creation, docs next to a source
+   document), no configuration is needed — resolve it in context instead.
+3. If a machine-wide default is wanted, set `htmlOutputDir` in
+   `~/.pi/agent/settings.json` to a **general-purpose** directory (e.g.
+   `~/.pi/agent/html-output/`). Never store a project-specific path there.
+4. If one project should default somewhere custom, set `htmlOutputDir` in
+   that project's `.pi/settings.json` instead.
+5. If using a C: drive path:
    - Convert `/mnt/c/...` → `file:///C:/...`
    - Replace spaces with `%20`
    - Append `/{filename}` and write it as `htmlOutputFileUri`
-3. If using WSL native paths:
+6. If using WSL native paths:
    - Get the WSL distro name from the user (e.g. `Ubuntu-24.04`)
-   - Write `"htmlOutputFileUriPrefix": "file://wsl.localhost/{distro}"`
-   - The agent will append the full filesystem path from `/home` onwards
-4. Note the change to the user so they know what was set
+   - Write `"htmlOutputFileUriPrefix": "file://wsl.localhost/{distro}"` —
+     this prefix is machine-scoped, so the global settings file is its
+     correct home.
+7. Note the change to the user so they know what was set
 
 ## Decision Heuristic
 

@@ -2,20 +2,23 @@
 name: adr-creation
 description: Creates and maintains dual-format ADRs — Markdown (source of truth for agents) and HTML (rich explainer for humans with diagrams). Keeps both formats in sync on updates. Use when user says "create an ADR", "document this decision", "write an ADR", "ADR for X", or when creating or updating a file in docs/adr/.
 author: Mike Scott
-version: '2.2.0'
-updated: '2026-07-19'
+version: '2.3.0'
+updated: '2026-08-04'
 ---
 
 # ADR Creation (Dual Format)
 
 ## Core Principles
 
-1. **Markdown** (`docs/adr/YYYY-MM-DD_kebab-title.md`) is the source of truth.
-   Concise, technical — for AI agents.
+1. **Markdown** (`<adr-dir>/YYYY-MM-DD_kebab-title.md`) is the source of truth.
+   Concise, technical — for AI agents. The ADR directory is `docs/adr/` by
+   default, but mirror the project's existing ADR location if it differs
+   (e.g. `wip/docs/adr/`).
 
-2. **HTML** (`docs/adr/html/YYYY-MM-DD_kebab-title.html`) is the human explainer.
+2. **HTML** (`<adr-dir>/html/YYYY-MM-DD_kebab-title.html`) is the human explainer.
    Rich, narrative, with diagrams. **Lead with the problem** — open with a concrete
-   before-state so the reader feels the pain before learning the fix.
+   before-state so the reader feels the pain before learning the fix. The HTML
+   destination is task-derived — do not consult `htmlOutputDir` settings for ADRs.
 
 3. **HTML targets non-technical readers.** The markdown is for developers and AI
    agents — concise, technical, assumes domain knowledge. The HTML is for sending
@@ -43,12 +46,14 @@ Auto-detect project name and repo URL from README.md or `git remote get-url orig
 
 ### 2. Create the Markdown ADR
 
-Write to `docs/adr/YYYY-MM-DD_kebab-title.md`. Use the template in
+Determine the ADR directory first: use where the project's existing ADRs live
+(look for `docs/adr/`, `wip/docs/adr/`, etc.), defaulting to `docs/adr/` when
+none exist yet. Write to `<adr-dir>/YYYY-MM-DD_kebab-title.md`. Use the template in
 [template-markdown.md](template-markdown.md).
 
 ### 3. Create the HTML ADR
 
-Write to `docs/adr/html/YYYY-MM-DD_kebab-title.html`. The HTML should:
+Write to `<adr-dir>/html/YYYY-MM-DD_kebab-title.html`. The HTML should:
 - Expand freely — diagrams, narrative, safety checks. Never contradict the markdown.
 - Follow the **section order** below.
 - Be self-contained (single HTML file, no external dependencies).
@@ -104,6 +109,7 @@ HTML:     https://github.com/{owner}/{repo}/blob/HEAD/docs/adr/html/YYYY-MM-DD_k
 ```
 
 Use `HEAD` (not a branch name). Derive `{owner}` and `{repo}` from `git remote get-url origin`.
+Adjust the `docs/adr/` path in the URLs if the project's ADR directory differs.
 
 ## Markdown Notes
 
