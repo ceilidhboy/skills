@@ -35,7 +35,7 @@ A non-zero exit on a clean checkout of master = drift exists. Record which files
 3. **Resolve formatter conflicts before committing** (see Conflict Matrix below)
 4. Commit the delta as a single commit: `chore: apply quality pipeline formatting to clear accumulated drift`
 5. PR to `master`, get it merged. Master is now self-consistent.
-6. In each open feature branch: `git merge master` (or rebase) — the formatting is now underneath, so the feature branch's own churn dissolves and its diff shrinks to the feature.
+6. In each open feature branch: `git merge master` — never rebase a branch that has been pushed to GitHub (rebase rewrites history and breaks collaborators with the branch checked out). The formatting is now underneath, so the feature branch's own churn dissolves and its diff shrinks to the feature.
 
 ### Phase 2 — Install the gate (CI) and hooks
 

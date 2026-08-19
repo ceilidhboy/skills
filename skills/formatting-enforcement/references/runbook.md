@@ -47,7 +47,8 @@ For each open feature branch that contains formatting churn:
 
 ```bash
 git checkout feature/branch
-git merge origin/master    # or: git rebase origin/master
+git merge origin/master    # MERGE only - never rebase a branch already pushed to GitHub
+                                    # rebase rewrites history and breaks anyone who has it checked out
 ```
 
 The merge takes master's formatted versions of the churned files; the feature branch's diff shrinks to just the feature. Resolve any conflicts by taking master's version of files that are formatting-only:
@@ -97,7 +98,7 @@ git commit -m "hook test"
 git show HEAD:tmp_bad.php   # should be pint-formatted
 git reset HEAD~1 && rm tmp_bad.php
 
-# Feature branches show no churn after rebase/merge: git diff --stat origin/master
+# Feature branches show no churn after merging master: git diff --stat origin/master
 
 ## 5. Communicate
 
