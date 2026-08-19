@@ -45,8 +45,8 @@ bash scripts/link-skills.sh
 bash scripts/verify-skills.sh --mode dev
 ```
 
-> Looking for Pi-specific skills and custom sub-agents?
-> - [pi-pr-reviewer](https://github.com/ceilidhboy/pi-pr-reviewer) — PR review agent + skill for Pi (installed via `pi install`)
+> Looking for Pi-specific custom sub-agents?
+> - `agents/` in this repo — the `reviewer` and `oracle` sub-agents used by the `pr-review` skill (linked into `~/.pi/agent/agents/` by `scripts/link-skills.sh`)
 > - [pi-agent-workflows](https://github.com/ceilidhboy/pi-agent-workflows) — Orchestrator-mode and delegation skills for Pi (installed via `pi install`)
 
 ## Skills
@@ -65,6 +65,7 @@ bash scripts/verify-skills.sh --mode dev
 | javascript-typescript-conventions | JS/TS coding conventions and best practices |
 | monthly-report-generator | Generate monthly development reports for clients from git history, PRs, and ADRs — HTML for web, Markdown for email, optional wiki publishing |
 | pest-testing-conventions | Pest 4 PHP testing conventions, workflows, and troubleshooting |
+| pr-review | Orchestrated PR reviews — runs reviewer + oracle sub-agents directly, consolidates findings into a structured report, and asks for approval before posting (the former pi-pr-reviewer package has been retired; this skill is the replacement) |
 | project-bootstrap | Company tooling standard for new Laravel + Inertia + React projects — Bun, Biome, Pint, Wayfinder, check-only CI, pre-commit hooks |
 | refactor-comments-that-are-code-smells | Code quality — refactor comments that explain what code does |
 | routing-and-controllers | Laravel controllers, routes, and Wayfinder mapping |
