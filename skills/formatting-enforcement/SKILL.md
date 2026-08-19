@@ -29,7 +29,7 @@ A non-zero exit on a clean checkout of master = drift exists. Record which files
 
 1. `git checkout -b chore/apply-quality-pipeline` from fresh `master`
 2. Run the repo's pipeline in **gate-consistent order** (whichever formatter runs last owns the files on disk):
-   - Biome+Prettier project: `npm run lint` (biome --write) **then** `npm run format` (prettier --write)
+   - Biome + Prettier project: `npm run lint` (biome --write) **then** `npm run format` (prettier --write) — Prettier last, so it owns the final on-disk state (CSS quote style, import order, Tailwind class order)
    - Biome-only project: `npm run lint` (biome --write)
    - PHP: `composer lint` (pint)
 3. **Resolve formatter conflicts before committing** (see Conflict Matrix below)
@@ -58,7 +58,7 @@ When an existing project keeps Prettier AND Biome, align them or the gate is uns
 | Import ordering (prettier's organize-imports vs biome's organizeImports sort differently) | `assist.enabled = false` (prettier owns imports) | biome.json |
 | JSON key sorting (biome sorts keys, prettier preserves order) | exclude composer.json from biome formatter (`!composer.json` in `formatter.includes`) | biome.json |
 
-A Biome-only project (company standard for new projects) needs none of these — Biome owns everything.
+These apply to every project that keeps Prettier (the company standard keeps Prettier for Tailwind class ordering and import organization, so the retrofit uses these in every case). A project that drops Prettier entirely (Biome-only) needs none of them — Biome owns everything, and the gate checks only `pint --test` + `biome ci`.
 
 ## Verification
 

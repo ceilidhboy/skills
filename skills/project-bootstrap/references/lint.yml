@@ -39,11 +39,15 @@ jobs:
           bun install
 
       # Check-only commands - these FAIL the build on formatting drift.
-      # Do NOT use fix-mode commands (pint, biome --write): they always exit 0
-      # and silently hide drift. composer test:lint is `pint --test` and
-      # lint:check is `biome ci` - both exit non-zero when changes are needed.
+      # Do NOT use fix-mode commands (pint, prettier --write, biome --write):
+      # they always exit 0 and silently hide drift.
+      # Prettier is kept for Tailwind class ordering and import organization;
+      # Biome for lint + formatting of JS/TS/CSS; Pint for PHP.
       - name: Check PHP Formatting
         run: composer test:lint
 
-      - name: Check Frontend Formatting + Lint
+      - name: Check Frontend Formatting
+        run: bun run format:check
+
+      - name: Check Frontend Lint
         run: bun run lint:check

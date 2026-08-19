@@ -2,15 +2,23 @@
 
 "scripts": {
     "prepare": "husky",
+    "format": "prettier --write resources/",
+    "format:check": "prettier --check resources/",
     "lint": "biome check . --write",
     "lint:check": "biome ci .",
     "types": "tsc --noEmit",
     "checks": "npm run lint:check && npm run types"
 }
 
+// Prettier runs LAST so it owns the on-disk CSS quote style, import order,
+// and Tailwind class order. Biome runs first for lint + formatting of the rest.
 "lint-staged": {
     "*.php": "vendor/bin/pint",
-    "*.{ts,tsx,js,jsx,mjs,cjs,css,json}": "biome check --write"
+    "*.{ts,tsx,js,jsx,mjs,cjs}": [
+        "biome check --write",
+        "prettier --write"
+    ],
+    "*.{css,scss,json,md,yml,yaml}": "prettier --write"
 }
 
 "devDependencies": {
