@@ -1,0 +1,42 @@
+name: linter
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+    branches:
+      - develop
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+
+      - name: Install Dependencies
+        run: |
+          composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
+          npm install
+
+      # Check-only commands - these FAIL the build on formatting drift.
+      # Do NOT use fix-mode commands (pint, prettier --write, biome --write):
+      # they always exit 0 and silently hide drift.
+      - name: Check PHP Formatting
+        run: composer test:lint
+
+      - name: Check Frontend Formatting
+        run: npm run format:check
+
+      - name: Check Frontend Lint
+        run: npm run lint:check

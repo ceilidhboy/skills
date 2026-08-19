@@ -1,0 +1,49 @@
+name: linter
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+      - master
+      - workos
+  pull_request:
+    branches:
+      - develop
+      - main
+      - master
+      - workos
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.4'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Dependencies
+        run: |
+          composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
+          bun install
+
+      # Check-only commands - these FAIL the build on formatting drift.
+      # Do NOT use fix-mode commands (pint, biome --write): they always exit 0
+      # and silently hide drift. composer test:lint is `pint --test` and
+      # lint:check is `biome ci` - both exit non-zero when changes are needed.
+      - name: Check PHP Formatting
+        run: composer test:lint
+
+      - name: Check Frontend Formatting + Lint
+        run: bun run lint:check

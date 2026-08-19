@@ -1,0 +1,27 @@
+// Merge into the project package.json (scripts + lint-staged block + devDependencies).
+// npm variant; swap `npm run` for `bun run` and npm install for bun install if the
+// project uses Bun.
+
+"scripts": {
+    "prepare": "husky",
+    "format": "prettier --write resources/",
+    "format:check": "prettier --check resources/",
+    "lint": "biome check . --write",
+    "lint:check": "biome ci .",
+    "types": "tsc --noEmit",
+    "checks": "npm run lint:check && npm run types"
+}
+
+"lint-staged": {
+    "*.php": "vendor/bin/pint",
+    "*.{ts,tsx,js,jsx,mjs,cjs}": [
+        "biome check --write",
+        "prettier --write"
+    ],
+    "*.{css,scss,json,md,yml,yaml}": "prettier --write"
+}
+
+"devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.0"
+}

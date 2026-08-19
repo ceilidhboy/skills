@@ -1,0 +1,27 @@
+{
+    "pint": ["pint --parallel"],
+    "generate:routing": ["php artisan wayfinder:generate --with-form"],
+    "test:lint": ["pint --parallel --test"],
+    "larastan": ["vendor/bin/phpstan analyse"],
+    "test": [
+        "@php artisan config:clear --ansi",
+        "@test:lint",
+        "@php artisan test --parallel"
+    ],
+    "check": ["@test", "bun run checks"],
+    "fix": [
+        "@php artisan config:clear --ansi",
+        "@pint",
+        "bun run lint",
+        "@php artisan test --parallel",
+        "bun run types"
+    ],
+    "setup": [
+        "composer install",
+        "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
+        "@php artisan key:generate",
+        "@php artisan migrate --force",
+        "bun install",
+        "bun run build"
+    ]
+}
