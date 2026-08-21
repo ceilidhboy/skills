@@ -142,6 +142,24 @@ After `serena_insert_after_symbol`, always verify the file has the required `use
 serena_search_for_pattern(pattern: "use Illuminate.*HasMany", relative_path: "app/Models/...")
 ```
 
+## Configuration
+
+Global config: `~/.serena/serena_config.yml` (not `config.yaml`). Accessible via the Serena dashboard.
+
+Key settings:
+
+| Setting | Default | Notes |
+|---|---|---|
+| `language_backend` | `LSP` | `LSP` or `JetBrains` |
+| `base_modes` | `[interactive, editing]` | Modes activated at startup |
+| `default_max_tool_answer_chars` | `150000` | Max output per tool call |
+| `tool_timeout` | `240` | Seconds before tool execution is terminated |
+| `symbol_info_budget` | `10` | Seconds budget for symbol info retrieval (0 = no limit) |
+| `web_dashboard` | `true` | Enable the dashboard |
+| `web_dashboard_open_on_launch` | `true` | Auto-open dashboard on start |
+
+Per-project config: `<project>/.serena/project.yml` — overrides global settings.
+
 ## Environment Variables
 
 | Variable | Effect |
