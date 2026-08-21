@@ -69,6 +69,7 @@ bash scripts/verify-skills.sh --mode dev
 | project-bootstrap | Company tooling standard for new Laravel + Inertia + React projects — Bun, Biome, Pint, Wayfinder, check-only CI, pre-commit hooks |
 | refactor-comments-that-are-code-smells | Code quality — refactor comments that explain what code does |
 | routing-and-controllers | Laravel controllers, routes, and Wayfinder mapping |
+| serena-conventions | Serena-first code navigation — correct parameter shapes, when to use Serena vs context-mode, common workflows for Laravel model editing |
 | serena-mcp-selection | Default to the LSP Serena MCP server; only use JetBrains when the user explicitly opts in |
 | settings-system | Multi-tenant polymorphic settings system with agency-scoped records and global fallback chain |
 | single-task-responsibility | Recognize SRP violations in task implementation |
