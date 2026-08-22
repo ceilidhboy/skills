@@ -9,6 +9,7 @@ You are the orchestrator of the PR review. You run the `reviewer` and `oracle` s
 
 ## Hard lessons (why it works this way)
 
+- **Run the quality pipeline (`composer fix`) before starting any review work.** A green baseline means any errors found later are unambiguously the PR author's, not pre-existing drift. Auto-fixes should be committed immediately so the branch starts clean.
 - **Always pass an explicit generous `timeoutMs` on every child** (minimum 7,200,000 = 2h today). The default run budget is 30 minutes and has killed far too many reviews of mid-size PRs — the parent died at the budget wall and cascade-killed a still-working oracle mid-analysis, losing ~30 minutes of work. A review of a 20+ file PR with test runs regularly needs 45–90 minutes per leg.
 - **Children are launched with `context: "fresh"` + a shared context file**, never `context: "fork"` — forking would drag this session's entire conversation into the children. The orchestration metadata lives in one file both children read.
 - **Keep the parent as orchestrator and final decision-maker.** Never post anything to the PR without the user's explicit approval.
@@ -73,6 +74,30 @@ WORKTREE_PATH="$BASE/<owner>/<repo>/<number>"
 **Check 3 — Not in a repo with the right remote:** ask the user: diff-only review (fast, GitHub API) or full clone (slower, better). Diff-only means both children use `gh pr diff <number> --repo <owner/repo>` and have no surrounding codebase.
 
 Review dir in all cases: `mkdir -p "$BASE/<owner>/<repo>/<number>"`.
+
+### 2.5. Establish green baseline
+
+Before doing any review work, run the project's quality pipeline in the worktree to confirm a green starting point. This is non-negotiable: if you review against a dirty baseline, pre-existing failures become your noise, not the PR author's signal.
+
+**Run the pipeline:**
+
+```bash
+cd "$WORKTREE_PATH" && composer fix 2>&1
+```
+
+This runs Pint (formatting), Biome (JS/TS linting), Pest (tests), and tsc (type-check) in one shot — the standard Laravel quality pipeline.
+
+**Interpret the result:**
+
+| Outcome | Action |
+|---|---|
+| All green, no file changes | Proceed to step 3. Clean baseline confirmed. |
+| All green, but Pint/Biome auto-fixed files | **Commit the fixes immediately** on the PR branch (`git add -A && git commit -m "style: quality pipeline auto-fixes"`) so the branch starts green. Then proceed to step 3. |
+| Test failures or type errors | **Stop.** Report the failures to the user. Ask whether to fix them first or proceed with the review knowing the failures pre-exist. Do not proceed silently. |
+
+**Why commit immediately:** If you leave auto-fixes uncommitted, they pollute the working tree and confuse the review children's diff analysis. Committing them gives the review a clean baseline and attributes any new issues found during review to the PR author's changes, not pre-existing drift.
+
+**Why not skip this:** Running the pipeline at the end (after changes) means you cannot distinguish pre-existing problems from problems you introduced. Running it at the beginning means any errors found later are unambiguously yours to own.
 
 ### 3. Gather PR metadata and previous review history
 
@@ -234,7 +259,8 @@ When the user says "run the review post-mortem" (or "post-mortem"), produce the 
 
 ## Hard Constraints
 
-- **Do not modify project files** — this is review-only work.
+- **Establish a green baseline before reviewing** — run `composer fix` in the worktree; commit auto-fixes; report failures to the user.
+- **Do not modify project source code during the review itself** — this is review-only work. The one exception is committing quality pipeline auto-fixes (Pint/Biome formatting) during step 2.5 to establish a clean baseline; those are not review changes, they are pre-review hygiene.
 - **Never mention the review process** in the posted comment.
 - **Keep the review constructive** — focus on code, not people.
 - **Never post without approval** — Step 10 always precedes Step 11.
