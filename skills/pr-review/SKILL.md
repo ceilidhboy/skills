@@ -205,17 +205,53 @@ REPORT_FILE="$BASE/<owner>/<repo>/<number>/report.md"
 
 Write the sanitised report there. The file lives alongside the worktree so cleanup removes both together, and it survives for follow-up questions.
 
-### 10. Present for approval
+### 10. Offer inline fixes
+
+Before presenting the report for approval, identify trivial one-line findings that can be fixed in 30 seconds (missing env var, renamed property, typo, missing docblock, missing test for a simple mapping). Do NOT fix them yet — first present the report to the user and ask whether to fix them inline or leave them for the PR author.
+
+**Present the report (step 12) with a note like:**
+
+> I found [N] trivial finding(s) I can fix inline before posting. Want me to fix them now, or leave them for the author?
+
+Then:
+- **User says yes** → Fix the findings, commit each, proceed to step 11.
+- **User says no** → Skip step 11, proceed to step 12 with the report as-is.
+
+Do NOT create issues for things that take 30 seconds — issues are for design decisions, non-trivial implementation, or product input.
+
+### 11. Run quality pipeline on your changes (only if inline fixes were applied)
+
+After any inline fixes are committed, run the pipeline again to catch auto-fixes your changes introduced:
+
+```bash
+cd "$WORKTREE_PATH" && composer fix 2>&1
+```
+
+| Outcome | Action |
+|---|---|
+| All green, no file changes | Proceed to step 12. |
+| All green, but Pint/Biome auto-fixed files | **Commit the fixes immediately** (`git add -A && git commit -m "style: quality pipeline auto-fixes"`), then `git push origin "$CURRENT_BRANCH"`. Proceed to step 12. |
+| Test failures or type errors caused by your fixes | **Revert your changes.** Do not post broken code. Report the failure to the user. |
+
+**Why this exists:** The baseline pipeline run (step 2.5) validated the pre-existing state. This run validates the state after your inline fixes. Skipping it means auto-fixes from your changes land uncommitted, and the approval is posted on code that is not green.
+
+### 12. Present for approval
 
 **Write the full report contents as your actual response text** — copy the Markdown directly into what you say to the user. Do NOT summarize it. Do NOT just read it into a tool output block and describe it. The user reads the report inline.
 
+If step 10 identified trivial findings, append a line like:
+
+> I found [N] trivial finding(s) I can fix inline before posting. Want me to fix them now, or leave them for the author?
+
 Then ask: "Post it? Revise something? Don't post?" — and act on the answer:
 
-- **Post it** → Step 11
+- **Post it** → Step 13
 - **Revise X** → update REPORT_FILE, then re-present
 - **Don't post** → stop; the report stays on disk (tell the user they can say "post the review of PR #<number>" later)
 
-### 11. Post the review
+**If the user approved inline fixes in step 10** (and those fixes have been applied and pipeline-validated in step 11), re-present the updated report before posting.
+
+### 13. Post the review
 
 Determine the review state from the report's Bottom line, then post:
 
@@ -228,9 +264,7 @@ fi
 gh pr review <number> --repo <owner/repo> $REVIEW_STATE --body-file "$REPORT_FILE"
 ```
 
-### 12. Offer to escalate outstanding findings to GitHub issues **only when the review is APPROVED**
-
-**Before escalating, fix trivial findings inline.** If a finding is a one-line edit (missing env var in `.env.example`, a renamed property, a typo, a missing docblock), fix it, commit, and push during the review — don't create an issue for something that takes 30 seconds. Issues are for findings that require design decisions, non-trivial implementation, or product input. Creating an issue for a one-line fix is noise that clutters the backlog.
+### 14. Offer to escalate outstanding findings to GitHub issues **only when the review is APPROVED**
 
 If the review is posted as an approval but the report still contains unresolved 🟡/🟢 findings that were NOT fixed inline, propose turning them into GitHub issues **assigned to the PR author** so they don't get lost. Do NOT offer this when the review is posted as CHANGES_REQUESTED — those findings already block the merge and are tracked in the PR thread; re-offer later only if the PR is closed without merging or the author explicitly punts a finding. Group only what shares a subsystem or fix class; keep self-contained fixes as their own issue. Check `gh issue list` for duplicates first, present the proposed list, and wait for an explicit yes — never create issues unprompted. Skip documentation-only items and anything another issue tracks.
 
@@ -243,7 +277,7 @@ gh pr comment <number> --repo <owner/repo> --body "Outstanding follow-ups from t
 
 Verify the comment is visible on the PR before moving on.
 
-### 13. Cleanup
+### 15. Cleanup
 
 When the user says "clean up review <number>": **only when the PR has been merged or closed.** If the PR is still open, remind them the report and worktree are active reference material and suggest waiting.
 
@@ -251,21 +285,22 @@ When the user says "clean up review <number>": **only when the PR has been merge
 - Directory already gone (e.g. tmpfs wiped by a WSL restart): `git worktree prune` to clear the orphaned admin record
 - **Never `rm -rf` the worktree directory first** — git cannot see that deletion and the record lingers as "prunable"
 
-### 14. Follow-up questions
+### 16. Follow-up questions
 
 The children's reports are in your session's context and the report/transcripts are on disk. Answer codebase questions directly, run tests the reviewer flagged, or revise the report on request. A completed leg can be resumed with `subagent({ action: "resume", id, message })` when its run is retained/resumable.
 
-### 15. Review post-mortem (optional)
+### 17. Review post-mortem (optional)
 
 When the user says "run the review post-mortem" (or "post-mortem"), produce the standard metrics analysis: for each leg (reviewer, oracle) report duration, tool-call mix (`serena_*` vs `bash` vs `read`/`grep`/`find`), turns, tokens (input/output/cache-read) and cost where available, with diff-size context, and compare against previous rounds. Attribute differences honestly (diff size vs serena vs test infrastructure). Note: serena availability is machine-dependent — a run with no serena calls is not a defect and must never be flagged as one; the review flow is identical with or without it.
 
 ## Hard Constraints
 
 - **Establish a green baseline before reviewing** — run `composer fix` in the worktree; commit auto-fixes; report failures to the user.
-- **Do not modify project source code during the review itself** — this is review-only work. The one exception is committing quality pipeline auto-fixes (Pint/Biome formatting) during step 2.5 to establish a clean baseline; those are not review changes, they are pre-review hygiene.
+- **Run the quality pipeline after any inline fixes** — step 11 exists because your changes may trigger Pint/Biome auto-fixes. Skipping it means the approval is posted on code that is not green.
+- **Do not modify project source code during the review itself** — this is review-only work. The two exceptions are: (1) committing quality pipeline auto-fixes (Pint/Biome formatting) during step 2.5 to establish a clean baseline; (2) fixing trivial one-line findings in step 10. Both are pre-review hygiene, not review changes.
 - **Never mention the review process** in the posted comment.
 - **Keep the review constructive** — focus on code, not people.
-- **Never post without approval** — Step 10 always precedes Step 11.
+- **Never post without approval** — Step 12 always precedes Step 13.
 - **Always pass an explicit generous `timeoutMs`** on every child launch.
 - **Maximum concurrency for children is 2** — reviewer and oracle, in parallel.
 - **Clean stale review worktrees before creating a new one** — only delete worktrees older than 1 hour to avoid disrupting concurrent reviews.
