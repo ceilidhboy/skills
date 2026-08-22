@@ -229,9 +229,17 @@ cd "$WORKTREE_PATH" && composer fix 2>&1
 
 | Outcome | Action |
 |---|---|
-| All green, no file changes | Proceed to step 12. |
-| All green, but Pint/Biome auto-fixed files | **Commit the fixes immediately** (`git add -A && git commit -m "style: quality pipeline auto-fixes"`), then `git push origin "$CURRENT_BRANCH"`. Proceed to step 12. |
+| All green, no file changes | Proceed to push. |
+| All green, but Pint/Biome auto-fixed files | **Commit the fixes immediately** (`git add -A && git commit -m "style: quality pipeline auto-fixes"`). Proceed to push. |
 | Test failures or type errors caused by your fixes | **Revert your changes.** Do not post broken code. Report the failure to the user. |
+
+**Push all commits before presenting.** After any inline fixes (and auto-fixes) are committed, push immediately:
+
+```bash
+git push origin "$CURRENT_BRANCH"
+```
+
+**Do not skip this.** An unpushed commit means the merged PR will not contain the fixes you just made — the approval is posted on code that doesn't include your changes. This is a critical failure: never tell the user everything is ready if there are unpushed commits.
 
 **Why this exists:** The baseline pipeline run (step 2.5) validated the pre-existing state. This run validates the state after your inline fixes. Skipping it means auto-fixes from your changes land uncommitted, and the approval is posted on code that is not green.
 
