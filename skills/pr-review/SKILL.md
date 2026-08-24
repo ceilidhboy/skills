@@ -39,13 +39,6 @@ CURRENT_REMOTE="$(git remote get-url origin 2>/dev/null)"
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
 ```
 
-Define the review workspace base — a per-user tmpfs wiped on reboot:
-
-```bash
-BASE="${XDG_RUNTIME_DIR:-/run/user/1000}/pr-review"
-mkdir -p "$BASE"
-```
-
 **Check 1 — Already on the PR branch and up to date:** if the remote matches the target repo AND `CURRENT_BRANCH` matches the PR's `headRefName`, verify it's current and use it directly:
 
 ```bash
@@ -59,21 +52,15 @@ else
 fi
 ```
 
-**Check 2 — Same repo, different branch:** create a temporary worktree under `$BASE/<owner>/<repo>/<number>/`. It shares git objects, so it is near-instant. Clean stale review worktrees (older than 1 hour) first; always use `git worktree remove` (removes directory AND admin record atomically), never `rm -rf` first:
+**Check 2 — Same repo, different branch:** ask the user where to work. **Do not create worktrees yourself** — worktree creation requires project-specific setup beyond git. Give these options:
 
-```bash
-git worktree prune
-# … (list `git worktree list --porcelain`, remove any under $BASE that are older than 60 min,
-#    using `git worktree remove --force` for the directory and `git branch -D` for its branch)
-git fetch origin pull/<number>/head:refs/heads/pr-review-tmp-<number>
-mkdir -p "$BASE/<owner>/<repo>"
-git worktree add "$BASE/<owner>/<repo>/<number>" pr-review-tmp-<number>
-WORKTREE_PATH="$BASE/<owner>/<repo>/<number>"
-```
+1. **Use `wip/`** — if a `wip` directory exists at the project root, ask whether to use it
+2. **Pick an existing worktree** — list existing worktrees (`git worktree list`) and let the user choose
+3. **Create your own** — ask the user to create a worktree and tell you the path
+
+Set `WORKTREE_PATH` to whichever directory the user selects.
 
 **Check 3 — Not in a repo with the right remote:** ask the user: diff-only review (fast, GitHub API) or full clone (slower, better). Diff-only means both children use `gh pr diff <number> --repo <owner/repo>` and have no surrounding codebase.
-
-Review dir in all cases: `mkdir -p "$BASE/<owner>/<repo>/<number>"`.
 
 ### 2.5. Establish green baseline
 
@@ -113,7 +100,7 @@ Extract a compact summary: title, description, file list (path + additions + del
 **Write the shared context file** — one file both children read, so task strings stay short and the two legs work from identical input:
 
 ```bash
-CTX_FILE="$BASE/<owner>/<repo>/<number>/context.md"
+CTX_FILE="$WORKTREE_PATH/context.md"
 ```
 
 It contains: PR number/repo, title, description, file manifest, commit list, base/head branches, the review workspace path, **and the full previous review history** (all prior review comments and inline comments including change requests).
@@ -200,10 +187,10 @@ Remove all internal process references from the report before presenting: no "re
 ### 9. Write the report to a file
 
 ```bash
-REPORT_FILE="$BASE/<owner>/<repo>/<number>/report.md"
+REPORT_FILE="$WORKTREE_PATH/report.md"
 ```
 
-Write the sanitised report there. The file lives alongside the worktree so cleanup removes both together, and it survives for follow-up questions.
+Write the sanitised report there. The file lives in the review workspace and survives for follow-up questions.
 
 ### 10. Offer inline fixes
 
@@ -287,11 +274,10 @@ Verify the comment is visible on the PR before moving on.
 
 ### 15. Cleanup
 
-When the user says "clean up review <number>": **only when the PR has been merged or closed.** If the PR is still open, remind them the report and worktree are active reference material and suggest waiting.
+When the user says "clean up review <number>": **only when the PR has been merged or closed.** If the PR is still open, remind them the report and context file are active reference material and suggest waiting.
 
-- Worktree still exists: `git worktree remove --force $BASE/<owner>/<repo>/<number>` (force is needed for the untracked report.md/context.md), then `git branch -D pr-review-tmp-<number>`
-- Directory already gone (e.g. tmpfs wiped by a WSL restart): `git worktree prune` to clear the orphaned admin record
-- **Never `rm -rf` the worktree directory first** — git cannot see that deletion and the record lingers as "prunable"
+- Delete `$WORKTREE_PATH/context.md` and `$WORKTREE_PATH/report.md` (review artifacts)
+- If the user created a worktree for this review, ask them whether to remove it — do not remove it yourself
 
 ### 16. Follow-up questions
 
@@ -311,5 +297,5 @@ When the user says "run the review post-mortem" (or "post-mortem"), produce the 
 - **Never post without approval** — Step 12 always precedes Step 13.
 - **Always pass an explicit generous `timeoutMs`** on every child launch.
 - **Maximum concurrency for children is 2** — reviewer and oracle, in parallel.
-- **Clean stale review worktrees before creating a new one** — only delete worktrees older than 1 hour to avoid disrupting concurrent reviews.
+- **Do not create worktrees** — always ask the user where to work (see Check 2).
 - **Cleanup is explicit or automatic** — only once the PR is merged or closed.
