@@ -37,6 +37,7 @@ The baseline pipeline run (step 2.5) validated the pre-existing state. Step 11 v
 - **Merge master before reviewing** — step 2b catches merge conflicts early. If conflicts appear, ask the user; never auto-resolve.
 - **Establish a green baseline before reviewing** — run `composer fix` in the worktree; commit auto-fixes; report failures to the user.
 - **Run the quality pipeline after any inline fixes** — step 11 exists because your changes may trigger Pint/Biome auto-fixes. Skipping it means the approval is posted on code that is not green.
+- **Same pipeline discipline after the review** — when the user asks you to fix findings on the PR branch after the review is posted, run `composer fix`, check `git diff` for auto-fixed files, commit them, and push. The pipeline discipline does not stop at step 13.
 - **Do not modify project source code during the review itself** — this is review-only work. The two exceptions are: (1) committing quality pipeline auto-fixes (Pint/Biome formatting) during step 2.5 to establish a clean baseline; (2) fixing trivial one-line findings in step 10. Both are pre-review hygiene, not review changes.
 - **Never mention the review process** in the posted comment.
 - **Keep the review constructive** — focus on code, not people.

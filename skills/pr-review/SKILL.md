@@ -271,6 +271,8 @@ git push origin "$CURRENT_BRANCH"
 
 **Do not skip this.** An unpushed commit means the merged PR will not contain the fixes you just made — the approval is posted on code that doesn't include your changes.
 
+> **Same rule applies after the review is posted.** If the user asks you to fix findings on the PR branch later, treat every `composer fix` run the same way: check `git diff` for auto-fixed files, commit them, and push before declaring the task done. The pipeline discipline does not stop at step 13.
+
 ### 12. Present for approval
 
 **Write the full report contents as your actual response text** — copy the Markdown directly into what you say to the user. Do NOT summarize it. Do NOT just read it into a tool output block and describe it. The user reads the report inline.
