@@ -53,6 +53,15 @@ Use `--parallel` for final verification before committing. Don't use `--parallel
 
 **Crashes without summary:** If the test run scrolls through green ticks then stops abruptly with no final summary and a non-zero exit code, a PHP fatal error likely killed the process mid-suite. This typically means a class definition error (e.g. extending a final class, interface method mismatch). Run `PAO_DISABLE=1 php -d display_errors=stderr vendor/bin/pest --filter=... 2>&1` on the affected test file to surface the actual fatal.
 
+### TIA (Test Impact Analysis)
+
+TIA runs only tests affected by your changes. Configured in `tests/Pest.php` with `pest()->tia()->directory('tests/.pest-tia-cache')->defaultBranch('master')->locally()`. The graph is committed to Git on master so worktrees and fresh clones get fast first runs.
+
+- **Master worktree**: Changes visible in `git status`. To update the baseline: run `update-tia-baseline` (or `update-tia-baseline --push` to push immediately).
+- **Non-master worktrees**: `--skip-worktree` is applied automatically by `setup-worktree`, hiding TIA changes from `git status`.
+
+Script: `update-tia-baseline` (in `tool-scripts/worktree-setup/`).
+
 ## Assertions
 
 > See [references/assertions.md](references/assertions.md) for **essential** guidance on assertion chaining patterns.
