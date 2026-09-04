@@ -291,6 +291,13 @@ Then ask: "Post it? Revise something? Don't post?" — and act on the answer:
 
 ### 13. Post the review
 
+**Before posting, verify the report body matches the verdict.** Read through `$REPORT_FILE` and confirm that:
+
+1. Every finding that was fixed inline (step 10/11) has been updated in the report body — not just the Bottom line. If a 🟡 finding was fixed, its text should now say ✓ (fixed) or be removed entirely. A report that still says "🟡 **X is broken**" in the body but shows 🟢 **APPROVE** in the Bottom line will confuse the PR author.
+2. The Bottom line verdict matches the remaining findings. If all 🟡/🔴 findings were fixed inline, the Bottom line should be 🟢 APPROVE and the body should contain no unresolved warnings.
+
+If there is a mismatch, fix the report body first, then post.
+
 Determine the review state from the report's Bottom line, then post:
 
 ```bash

@@ -8,6 +8,7 @@ This file contains hard-won lessons and rationale for the PR review workflow. Re
 - **Always pass an explicit generous `timeoutMs` on every child** (minimum 7,200,000 = 2h). The default run budget is 30 minutes and has killed far too many reviews of mid-size PRs — the parent died at the budget wall and cascade-killed a still-working oracle mid-analysis, losing ~30 minutes of work. A review of a 20+ file PR with test runs regularly needs 45–90 minutes per leg.
 - **Children are launched with `context: "fresh"` + a shared context file**, never `context: "fork"` — forking would drag this session's entire conversation into the children. The orchestration metadata lives in one file both children read.
 - **Keep the parent as orchestrator and final decision-maker.** Never post anything to the PR without the user's explicit approval.
+- **Verify the report body matches the verdict before posting.** If you fixed findings inline (step 10/11), update the report body to reflect the fixes — not just the Bottom line. A report that says "🟡 X is broken" in the body but shows 🟢 APPROVE at the bottom will confuse the PR author and cannot be edited after posting (GitHub review bodies are immutable). This is a real failure mode that has happened: the fix was correct but the posted review contradicted it.
 
 ## Why we do things this way
 
