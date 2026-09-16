@@ -1,6 +1,6 @@
 ---
 name: bug-fix
-description: "Activate when user reports a bug, broken feature, failing behaviour, or says 'fix this', 'not working', 'doesn't work', 'error', 'regression'. ALWAYS before writing any fix — red-green only."
+description: "Activate before creating, modifying, or deleting any production code file. Whether the task is a bug fix, feature, refactor, rename, or improvement — any write to production code requires a failing test first. The trigger is any write-mode action on production code, not the reason for it."
 ---
 
 # Bug Fix — Red-Green, No Exceptions
