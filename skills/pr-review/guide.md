@@ -4,6 +4,7 @@ This file contains hard-won lessons and rationale for the PR review workflow. Re
 
 ## Hard lessons
 
+- **Build production assets (`<pm> run build`) before the quality pipeline.** Generated route and type definitions are gitignored, so a fresh worktree carries stale ones from a previous build. `tsc` then reports phantom errors in files the PR never touched (e.g. `Property 'form' does not exist on type '...RouteDefinition...'`). The environment must match production before it is judged.
 - **Run the quality pipeline (`composer fix`) before starting any review work.** A green baseline means any errors found later are unambiguously the PR author's, not pre-existing drift. Auto-fixes should be committed immediately so the branch starts clean.
 - **Always pass an explicit generous `timeoutMs` on every child** (minimum 7,200,000 = 2h). The default run budget is 30 minutes and has killed far too many reviews of mid-size PRs — the parent died at the budget wall and cascade-killed a still-working oracle mid-analysis, losing ~30 minutes of work. A review of a 20+ file PR with test runs regularly needs 45–90 minutes per leg.
 - **Children are launched with `context: "fresh"` + a shared context file**, never `context: "fork"` — forking would drag this session's entire conversation into the children. The orchestration metadata lives in one file both children read.
@@ -11,6 +12,17 @@ This file contains hard-won lessons and rationale for the PR review workflow. Re
 - **Verify the report body matches the verdict before posting.** If you fixed findings inline (step 10/11), update the report body to reflect the fixes — not just the Bottom line. A report that says "🟡 X is broken" in the body but shows 🟢 APPROVE at the bottom will confuse the PR author and cannot be edited after posting (GitHub review bodies are immutable). This is a real failure mode that has happened: the fix was correct but the posted review contradicted it.
 
 ## Why we do things this way
+
+### Why we build production assets before judging the workspace (step 2b)
+
+Wayfinder's generated route and action definitions (`resources/js/actions`, `resources/js/routes`), the Inertia/Ziggy helpers, and the Vite manifest are all gitignored build outputs. Checking out a branch into a worktree therefore does *not* give you the definitions that branch needs — you inherit whatever the last build in that directory produced. If the branch adds a route or a controller method, `tsc` fails on missing properties in generated files while the PR's own diff is perfectly fine.
+
+Two consequences make this worse than a cosmetic annoyance:
+
+1. **It looks like a real finding.** The errors name real files and real properties, so a reviewer reports them as PR defects in files the PR never touched. This has happened for real: 17 `Property 'form' does not exist` errors across auth and settings pages, from a PR whose entire diff was seven PHP files.
+2. **It poisons the baseline.** Step 2.5 exists to prove the branch starts green. If the baseline is red for an environmental reason, "pre-existing failure" loses its meaning and every later signal is suspect.
+
+Building first costs a few minutes and removes the whole class of error. It must happen *before* `composer fix`, not after: building afterwards only type-checks a different tree than the one that failed.
 
 ### Why commit auto-fixes immediately (step 2.5)
 
@@ -20,7 +32,7 @@ If you leave auto-fixes uncommitted, they pollute the working tree and confuse t
 
 Running the pipeline at the end (after changes) means you cannot distinguish pre-existing problems from problems you introduced. Running it at the beginning means any errors found later are unambiguously yours to own.
 
-### Why merge master before reviewing (step 2b)
+### Why merge master before reviewing (step 2a)
 
 Reviewing a branch that can't merge cleanly into master wastes everyone's time. The conflicts will need resolving eventually — better to surface them now, before the review investment.
 
@@ -34,8 +46,9 @@ The baseline pipeline run (step 2.5) validated the pre-existing state. Step 11 v
 
 ## Hard constraints
 
-- **Verify the PR targets master before doing anything else** — step 2a is a hard gate. If the PR targets a branch other than `master` and the user did not explicitly mention that in their request, stop immediately. Do not merge master, do not review, do not proceed.
-- **Merge master before reviewing** — step 2b catches merge conflicts early. If conflicts appear, ask the user; never auto-resolve.
+- **Build production assets before the pipeline** — step 2b. Generated definitions are gitignored and stale in a fresh worktree; a red `tsc` caused by stale artifacts is an environment defect, never a PR finding.
+- **Verify the PR targets master before doing anything else** — step 1.5 is a hard gate. If the PR targets a branch other than `master` and the user did not explicitly mention that in their request, stop immediately. Do not merge master, do not review, do not proceed.
+- **Merge master before reviewing** — step 2a catches merge conflicts early. If conflicts appear, ask the user; never auto-resolve.
 - **Establish a green baseline before reviewing** — run `composer fix` in the worktree; commit auto-fixes; report failures to the user.
 - **Run the quality pipeline after any inline fixes** — step 11 exists because your changes may trigger Pint/Biome auto-fixes. Skipping it means the approval is posted on code that is not green.
 - **Same pipeline discipline after the review** — when the user asks you to fix findings on the PR branch after the review is posted, run `composer fix`, check `git diff` for auto-fixed files, commit them, and push. The pipeline discipline does not stop at step 13.

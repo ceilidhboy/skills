@@ -28,7 +28,31 @@ Extract the PR number and optional owner/repo from:
 
 If the owner/repo cannot be determined from the task or the git remote, ask the user before proceeding.
 
-### 2. Detect the current directory / choose the review workspace
+### 1.5. Resolve the PR, then verify it targets master (hard gate)
+
+Fetch the PR's branches **before** any workspace decision. Step 2's "already on the PR branch" check compares the current branch against `headRefName`, so fetching it later makes that check impossible to evaluate — that ordering bug is why an already-checked-out PR branch gets missed.
+
+```bash
+gh pr view <number> --repo <owner/repo> --json number,title,url,state,headRefName,baseRefName
+```
+
+Hold `PR_HEAD`, `PR_BASE`, and `PR_TITLE` for the rest of the workflow. If `state` is not `OPEN`, say so and confirm the user still wants a review.
+
+**Now the target-branch gate. Do not skip it.**
+
+**If `PR_BASE` is not `master`:**
+
+1. Check whether the user explicitly mentioned the non-master target in their request (e.g., "review PR #123 which targets develop").
+2. **If the user did NOT explicitly mention it:** Stop immediately. Report:
+   > ⚠️ **PR #<number> targets `<PR_BASE>`, not `master`.** This PR appears to be aimed at the wrong branch. Aborting review to avoid wasted effort. Please verify with the PR author.
+   Do **not** proceed with the review. Do **not** merge master. Do **not** run any review steps.
+3. **If the user DID explicitly mention it:** Continue, but note the non-master target in the context file and in your final report.
+
+**If `PR_BASE` is `master`:** proceed to step 2.
+
+Running this before the workspace questions means a mis-targeted PR is rejected without ever asking the user where to work.
+
+### 2. Choose the review workspace (current directory first)
 
 Check whether the current working directory is inside a git repo:
 
@@ -36,52 +60,46 @@ Check whether the current working directory is inside a git repo:
 TOPLEVEL="$(git rev-parse --show-toplevel 2>/dev/null)" || TOPLEVEL=""
 CURRENT_REMOTE="$(git remote get-url origin 2>/dev/null)"
 CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+WORKTREE_PATH=""
 ```
 
-**Check 1 — Already on the PR branch and up to date:** if the remote matches the target repo AND `CURRENT_BRANCH` matches the PR's `headRefName`, verify it's current and use it directly:
+**Check 1 — Already on the PR branch. This is the expected case, not a lucky one.** The user normally checks out the PR branch into a worktree and starts the session there, so check the current directory first and prefer it. A match requires all three:
+
+- `CURRENT_REMOTE` is the same repo as `<owner/repo>` — compare owner/repo, not the raw URL (`git@github.com:<owner>/<repo>.git` and `https://github.com/<owner>/<repo>.git` both count)
+- `CURRENT_BRANCH` equals `PR_HEAD`
+- `git status --porcelain` shows no modified *tracked* files (see the guard below)
+
+**On a match: set `WORKTREE_PATH="$TOPLEVEL"` and continue. Do not ask the user where to work, do not offer alternatives, do not create or switch anything.** Asking here is the exact failure this check exists to prevent. Then bring the branch up to date:
 
 ```bash
-git fetch origin "$CURRENT_BRANCH" 2>/dev/null
+git fetch origin "$CURRENT_BRANCH"
 BEHIND="$(git rev-list --count HEAD..origin/"$CURRENT_BRANCH" 2>/dev/null)"
-if [ "$BEHIND" = "0" ]; then
-  WORKTREE_PATH="$TOPLEVEL"
-else
-  git merge --ff-only origin/"$CURRENT_BRANCH" 2>/dev/null
-  WORKTREE_PATH="$TOPLEVEL"
+if [ "$BEHIND" != "0" ]; then
+  git merge --ff-only origin/"$CURRENT_BRANCH"
 fi
 ```
 
-**Check 2 — Same repo, different branch:** ask the user where to work. **Do not create worktrees yourself** — worktree creation requires project-specific setup beyond git. Give these options:
+If the fast-forward fails, stop and ask the user rather than forcing anything.
 
-1. **Use `wip/`** — if a `wip` directory exists at the project root, ask whether to use it
-2. **Pick an existing worktree** — list existing worktrees (`git worktree list`) and let the user choose
-3. **Create your own** — ask the user to create a worktree and tell you the path
+**Guard — modified tracked files.** If `git status --porcelain` shows modified *tracked* files, do not silently review over them. Report the paths and ask whether to commit, stash, or discard them. Ignored build artifacts (see step 2b) do not count — they are expected.
 
-Set `WORKTREE_PATH` to whichever directory the user selects.
+**Check 2 — Same repo, different branch.** The directory is the right repository but not the PR branch. Ask the user where to work. **Do not create worktrees yourself** — worktree creation needs project-specific setup beyond git. Offer:
 
-**Check 3 — Not in a repo with the right remote:** ask the user: diff-only review (fast, GitHub API) or full clone (slower, better). Diff-only means both children use `gh pr diff <number> --repo <owner/repo>` and have no surrounding codebase.
+1. **Use an existing worktree** — run `git worktree list`; if a worktree the user keeps for reviews exists (commonly `review/wip`, `wip`, or `.worktrees/<name>`), name it explicitly as the likely candidate
+2. **Create your own** — ask the user to create/check out a worktree and tell you the path
+3. **Check out the PR head in the current directory** — only if the user asks for it; do not do it unilaterally
 
-### 2a. Verify the PR targets master (hard gate)
+Set `WORKTREE_PATH` to whichever path the user selects.
 
-**This is the very first thing you do after establishing the workspace. Do not skip it.**
+**Check 3 — Not in a repo with the right remote.** Ask the user: diff-only review (fast, GitHub API) or full clone (slower, better). Diff-only means both children use `gh pr diff <number> --repo <owner/repo>` and have no surrounding codebase.
 
-Fetch the PR's base branch from GitHub:
+**Workspace pre-flight — announce it before continuing.** Post one line stating the resolved workspace and branch before any further step, for example:
 
-```bash
-BASE_BRANCH=$(gh pr view <number> --repo <owner/repo> --json baseRefName --jq '.baseRefName')
-```
+> Workspace: `/path/to/worktree` — branch `feat/x`, PR #<number> head `feat/x` ✓, base `master` ✓
 
-**If `BASE_BRANCH` is not `master`:**
+This makes a wrong workspace visible immediately instead of surfacing 40 minutes later as bogus findings. If the announced line disagrees with the PR, stop and fix it before step 2a.
 
-1. Check whether the user explicitly mentioned the non-master target in their request (e.g., "review PR #123 which targets develop").
-2. **If the user did NOT explicitly mention it:** Stop immediately. Report:
-   > ⚠️ **PR #<number> targets `<BASE_BRANCH>`, not `master`.** This PR appears to be aimed at the wrong branch. Aborting review to avoid wasted effort. Please verify with the PR author.
-   Do **not** proceed with the review. Do **not** merge master. Do **not** run any review steps.
-3. **If the user DID explicitly mention it:** Continue, but note the non-master target in the context file and in your final report.
-
-**If `BASE_BRANCH` is `master`:** Proceed to step 2b.
-
-### 2b. Merge master into the PR branch (pre-review sync)
+### 2a. Merge master into the PR branch (pre-review sync)
 
 Before reviewing, ensure the PR branch is up to date with master. This catches merge conflicts early and confirms the branch integrates cleanly.
 
@@ -103,7 +121,7 @@ MERGE_EXIT=$?
 
 | Outcome | Action |
 |---|---|
-| Merge succeeds (exit 0) | Proceed to step 2.5. Branch is up to date. |
+| Merge succeeds (exit 0) | Proceed to step 2b. Branch is up to date. |
 | Merge conflicts | **Stop.** Report the conflicts to the user and ask for a decision. Do **not** auto-resolve. |
 
 **If there are merge conflicts:**
@@ -118,9 +136,35 @@ MERGE_EXIT=$?
    > 3. **Abort the review** — stop here.
 3. **Wait for the user's decision** before doing anything else.
 
+### 2b. Build production assets (before the pipeline)
+
+Generated frontend artifacts are **gitignored**, so a freshly checked-out worktree starts with whatever a previous build left behind — not what this branch needs. Wayfinder route and action definitions, Inertia/Ziggy helpers, and the Vite manifest are all in this category. When the branch adds or renames routes, `tsc` then fails on phantom errors such as `Property 'form' does not exist on type '...RouteDefinition...'` in files the PR never touched. Those errors burn review budget and mask real findings, and they are an environment defect, not a code defect.
+
+Build the assets so the workspace matches production before anything type-checks against it:
+
+```bash
+cd "$WORKTREE_PATH"
+# choose the package manager from the lockfile:
+# bun.lock(b) → bun, pnpm-lock.yaml → pnpm, yarn.lock → yarn, package-lock.json → npm
+bun run build
+```
+
+Look for a `build` script in `package.json` — in Laravel + Wayfinder projects it is typically `php artisan typescript:transform && vite build`, and `vite build` is what regenerates `resources/js/actions` and `resources/js/routes`. A production build of a large app can take several minutes; give it a generous timeout and do not interrupt it.
+
+**Interpret the result:**
+
+| Outcome | Action |
+|---|---|
+| Build succeeds | Proceed to step 2.5. Commit nothing — build outputs (`public/build`, generated route definitions) are gitignored. |
+| Build succeeds but modifies **tracked** files | Commit them as auto-fixes (`git add -A && git commit -m "chore: regenerate build artifacts"`), then proceed. If the diff is substantial rather than obviously generated, stop and ask the user. |
+| Build fails | **Stop.** Report the failure to the user. A failed build is an environment/setup problem, not a PR finding — never hand it to the review as one. |
+| No frontend build script (backend-only repo) | Skip this step, note it, and proceed to step 2.5. |
+
+**Why before the pipeline, not after:** `composer fix` runs `tsc`, and `tsc` reads those generated definitions. Building afterwards validates a different tree than the one that failed. See `guide.md` for the rationale.
+
 ### 2.5. Establish green baseline
 
-Before doing any review work, run the project's quality pipeline in the worktree to confirm a green starting point. This is non-negotiable: if you review against a dirty baseline, pre-existing failures become your noise, not the PR author's signal.
+Before doing any review work, run the project's quality pipeline in the worktree to confirm a green starting point. This is non-negotiable: if you review against a dirty baseline, pre-existing failures become your noise, not the PR author's signal. Production assets are already built (step 2b), so `tsc` type-checks against current generated definitions rather than whatever a previous build left behind.
 
 **Run the pipeline:**
 
@@ -141,6 +185,8 @@ This runs Pint (formatting), Biome (JS/TS linting), Pest (tests), and tsc (type-
 > **Tip:** If you're unsure why we run the pipeline before reviewing, or what to do with the results, check `guide.md` for the rationale.
 
 ### 3. Gather PR metadata and previous review history
+
+`PR_HEAD`, `PR_BASE`, and `PR_TITLE` are already resolved (step 1.5). This step adds the description, file manifest, commits, and review history.
 
 ```bash
 gh pr view <number> --repo <owner/repo> --json number,title,body,headRefName,baseRefName,files,additions,deletions,author,state,createdAt
