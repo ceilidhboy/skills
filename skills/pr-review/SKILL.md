@@ -179,8 +179,10 @@ This runs Pint (formatting), Biome (JS/TS linting), Pest (tests), and tsc (type-
 | Outcome | Action |
 |---|---|
 | All green, no file changes | Proceed to step 3. Clean baseline confirmed. |
-| All green, but Pint/Biome auto-fixed files | **Commit the fixes immediately** on the PR branch (`git add -A && git commit -m "style: quality pipeline auto-fixes"`) so the branch starts green. Then proceed to step 3. |
+| All green, but Pint/Biome auto-fixed files | **Commit and push the fixes immediately** — `git add -A && git commit -m "style: quality pipeline auto-fixes" && git push origin "$CURRENT_BRANCH"` — so the branch starts green *and* the PR contains the code about to be reviewed. Then proceed to step 3. |
 | Test failures or type errors | **Stop.** Report the failures to the user. Ask whether to fix them first or proceed with the review knowing the failures pre-exist. Do not proceed silently. |
+
+**Push the auto-fixes before launching the review — do not stop at committing.** A local-only commit means the review validates code the PR does not contain, and GitHub's diff still shows the unformatted version. Pushing mechanical formatting fixes back to the PR branch is normal pre-review sync, not a review change. If the push is rejected (no write access, protected branch), report it and ask whether to continue with the fix committed locally only.
 
 > **Tip:** If you're unsure why we run the pipeline before reviewing, or what to do with the results, check `guide.md` for the rationale.
 
@@ -309,7 +311,7 @@ cd "$WORKTREE_PATH" && composer fix 2>&1
 | All green, but Pint/Biome auto-fixed files | **Commit the fixes immediately** (`git add -A && git commit -m "style: quality pipeline auto-fixes"`). Proceed to push. |
 | Test failures or type errors caused by your fixes | **Revert your changes.** Do not post broken code. Report the failure to the user. |
 
-**Push all commits before presenting.** After any inline fixes (and auto-fixes) are committed, push immediately:
+**Push all commits before presenting.** Baseline auto-fixes from step 2.5 were already pushed before the review launched; this covers commits made after it. After any inline fixes (and auto-fixes) are committed, push immediately:
 
 ```bash
 git push origin "$CURRENT_BRANCH"

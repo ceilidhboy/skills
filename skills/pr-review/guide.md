@@ -5,7 +5,7 @@ This file contains hard-won lessons and rationale for the PR review workflow. Re
 ## Hard lessons
 
 - **Build production assets (`<pm> run build`) before the quality pipeline.** Generated route and type definitions are gitignored, so a fresh worktree carries stale ones from a previous build. `tsc` then reports phantom errors in files the PR never touched (e.g. `Property 'form' does not exist on type '...RouteDefinition...'`). The environment must match production before it is judged.
-- **Run the quality pipeline (`composer fix`) before starting any review work.** A green baseline means any errors found later are unambiguously the PR author's, not pre-existing drift. Auto-fixes should be committed immediately so the branch starts clean.
+- **Run the quality pipeline (`composer fix`) before starting any review work.** A green baseline means any errors found later are unambiguously the PR author's, not pre-existing drift. Auto-fixes should be committed **and pushed to the PR branch** immediately, so the branch starts clean and the review runs against the code the PR actually contains.
 - **Always pass an explicit generous `timeoutMs` on every child** (minimum 7,200,000 = 2h). The default run budget is 30 minutes and has killed far too many reviews of mid-size PRs — the parent died at the budget wall and cascade-killed a still-working oracle mid-analysis, losing ~30 minutes of work. A review of a 20+ file PR with test runs regularly needs 45–90 minutes per leg.
 - **Children are launched with `context: "fresh"` + a shared context file**, never `context: "fork"` — forking would drag this session's entire conversation into the children. The orchestration metadata lives in one file both children read.
 - **Keep the parent as orchestrator and final decision-maker.** Never post anything to the PR without the user's explicit approval.
@@ -24,9 +24,11 @@ Two consequences make this worse than a cosmetic annoyance:
 
 Building first costs a few minutes and removes the whole class of error. It must happen *before* `composer fix`, not after: building afterwards only type-checks a different tree than the one that failed.
 
-### Why commit auto-fixes immediately (step 2.5)
+### Why commit and push auto-fixes immediately (step 2.5)
 
 If you leave auto-fixes uncommitted, they pollute the working tree and confuse the review children's diff analysis. Committing them gives the review a clean baseline and attributes any new issues found during review to the PR author's changes, not pre-existing drift.
+
+Pushing is the other half, and skipping it quietly invalidates the review. A commit that exists only in the worktree means the reviewers read code the PR does not contain, GitHub's diff still shows the unformatted version, and the merge will not carry the fix. Mechanical formatting fixes pushed back to the PR branch are normal pre-review sync — trivially inspectable, and they keep the reviewed tree equal to the PR head. If the push is rejected (no write access, protected branch), say so and ask whether to continue with the fix committed locally only.
 
 ### Why not skip the baseline pipeline (step 2.5)
 
@@ -38,7 +40,7 @@ Reviewing a branch that can't merge cleanly into master wastes everyone's time. 
 
 ### Why push after inline fixes (step 11)
 
-An unpushed commit means the merged PR will not contain the fixes you just made — the approval is posted on code that doesn't include your changes. This is a critical failure: never tell the user everything is ready if there are unpushed commits.
+An unpushed commit means the merged PR will not contain the fixes you just made — the approval is posted on code that doesn't include your changes. This is a critical failure: never tell the user everything is ready if there are unpushed commits. The baseline auto-fixes from step 2.5 are pushed on the same principle, just earlier — before the reviewers launch rather than after they report.
 
 ### Why the baseline pipeline runs twice (steps 2.5 and 11)
 
@@ -49,10 +51,10 @@ The baseline pipeline run (step 2.5) validated the pre-existing state. Step 11 v
 - **Build production assets before the pipeline** — step 2b. Generated definitions are gitignored and stale in a fresh worktree; a red `tsc` caused by stale artifacts is an environment defect, never a PR finding.
 - **Verify the PR targets master before doing anything else** — step 1.5 is a hard gate. If the PR targets a branch other than `master` and the user did not explicitly mention that in their request, stop immediately. Do not merge master, do not review, do not proceed.
 - **Merge master before reviewing** — step 2a catches merge conflicts early. If conflicts appear, ask the user; never auto-resolve.
-- **Establish a green baseline before reviewing** — run `composer fix` in the worktree; commit auto-fixes; report failures to the user.
+- **Establish a green baseline before reviewing** — run `composer fix` in the worktree; commit auto-fixes and push them to the PR branch before launching the review; report failures to the user.
 - **Run the quality pipeline after any inline fixes** — step 11 exists because your changes may trigger Pint/Biome auto-fixes. Skipping it means the approval is posted on code that is not green.
 - **Same pipeline discipline after the review** — when the user asks you to fix findings on the PR branch after the review is posted, run `composer fix`, check `git diff` for auto-fixed files, commit them, and push. The pipeline discipline does not stop at step 13.
-- **Do not modify project source code during the review itself** — this is review-only work. The two exceptions are: (1) committing quality pipeline auto-fixes (Pint/Biome formatting) during step 2.5 to establish a clean baseline; (2) fixing trivial one-line findings in step 10. Both are pre-review hygiene, not review changes.
+- **Do not modify project source code during the review itself** — this is review-only work. The two exceptions are: (1) committing and pushing quality pipeline auto-fixes (Pint/Biome formatting) during step 2.5 to establish a clean baseline; (2) fixing trivial one-line findings in step 10. Both are pre-review hygiene, not review changes.
 - **Never mention the review process** in the posted comment.
 - **Keep the review constructive** — focus on code, not people.
 - **Never post without approval** — Step 12 always precedes Step 13.
