@@ -184,6 +184,12 @@ This runs Pint (formatting), Biome (JS/TS linting), Pest (tests), and tsc (type-
 
 **Push the auto-fixes before launching the review — do not stop at committing.** A local-only commit means the review validates code the PR does not contain, and GitHub's diff still shows the unformatted version. Pushing mechanical formatting fixes back to the PR branch is normal pre-review sync, not a review change. If the push is rejected (no write access, protected branch), report it and ask whether to continue with the fix committed locally only.
 
+**The review target is the resulting HEAD — the complete PR as it will merge.** HEAD now contains the author's commits *plus* any pre-review auto-fix commits just pushed. That whole entity is what gets accepted into master, so it is what the reviewers judge: never scope a review to the author's original commit, and never to a SHA resolved before this step. In the worktree the reviewed diff is everything from the merge base:
+
+```bash
+git diff $(git merge-base HEAD origin/master)..HEAD --stat
+```
+
 > **Tip:** If you're unsure why we run the pipeline before reviewing, or what to do with the results, check `guide.md` for the rationale.
 
 ### 3. Gather PR metadata and previous review history
@@ -193,11 +199,11 @@ This runs Pint (formatting), Biome (JS/TS linting), Pest (tests), and tsc (type-
 ```bash
 gh pr view <number> --repo <owner/repo> --json number,title,body,headRefName,baseRefName,files,additions,deletions,author,state,createdAt
 gh pr view <number> --repo <owner/repo> --json commits
-gh api "repos/<owner>/<repo>/pulls/<number>/reviews?per_page=100" --jq '.[] | select(.state != "PENDING") | {id: .id, user: .user.login, body: .body, state: .state, submitted_at: .submitted_at}'
+gh api "repos/<owner>/<repo>/pulls/<number>/reviews?per_page=100" --jq '.[] | select(.state != "PENDING") | {id: .id, user: .user.login, body: .body, state: .state, commit_id: .commit_id, submitted_at: .submitted_at}'
 gh api "repos/<owner>/<repo>/pulls/<number>/comments?per_page=100" --jq '.[] | {id: .id, user: .user.login, body: .body, path: .path, line: .line, diff_hunk: .diff_hunk}'
 ```
 
-Extract a compact summary: title, description, file list (path + additions + deletions), commit SHAs and messages, base branch, head branch, and **all previous review comments and change requests**.
+Extract a compact summary: title, description, file list (path + additions + deletions), commit SHAs and messages, base branch, head branch, and **all previous review comments and change requests**. Record each previous review's `commit_id` — that is the SHA GitHub recorded for the round, and it is the only reliable way to tell what state a previous finding referred to once the branch has moved. Use it when reconciling change requests in step 6 and when checking for reversals in step 7.
 
 **Write the shared context file** — one file both children read, so task strings stay short and the two legs work from identical input:
 
