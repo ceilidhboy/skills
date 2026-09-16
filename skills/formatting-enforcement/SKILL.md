@@ -74,7 +74,35 @@ These apply to every project that keeps Prettier (the company standard keeps Pre
 - [Pre-commit hook](references/pre-commit) — Bare `lint-staged` (portable across npm and Bun)
 - [package.json snippets](references/package-json.snippets.json) — Scripts, lint-staged config, devDependencies
 
+## Five Touchpoints (where formatting enforcement lives)
+
+| # | Touchpoint | What | How |
+|---|---|---|---|
+| 1 | **CI lint workflow** | Gate on every push/PR | `lint.yml` runs check-only commands (`pint --test`, `biome ci`); fails on drift |
+| 2 | **CI tests workflow** | Capture drift on failure | `tests.yml` runs the fixers in a subshell to capture which files drift + Biome version as an artifact |
+| 3 | **Pre-commit hook** | Catch drift before commit | `lint-staged` runs pint/biome/prettier on staged files only |
+| 4 | **`composer check`** | Local gate (non-mutating mirror of `fix`) | Runs check-mode tools; exits 1 on any drift, leaves tree unchanged |
+| 5 | **`composer fix`** | Local repair (mutating) | Runs fix-mode tools; rewrites files, then verifies the rewritten tree |
+
+## Fixer → Checker Mapping
+
+Every fixer has a corresponding check-mode command. The gate must run the check, not the fixer — otherwise the gate never fails.
+
+| Fixer | Check equivalent | What it checks |
+|---|---|---|
+| `pint` (Laravel Pint) | `pint --test` (or `composer test:lint`) | PHP formatting (PSR-12, project rules) |
+| `biome check --write` | `biome ci` (or `bun run lint:check`) | JS/TS linting + formatting |
+| `prettier --write` | `prettier --check` (or `bun run format:check`) | CSS quotes, import order, Tailwind class order |
+| `tsc` | `tsc --noEmit` | TypeScript type errors |
+| `vitest run` | `vitest run` | Unit/integration tests |
+| `pest` | `pest` (with `--order-by=rand` in CI) | PHP tests |
+
+**Important:** `composer check` must run in build-then-check order — `bun run build` (or equivalent) must execute before `tsc --noEmit`, because `tsc` reads generated route definitions and other build artifacts. Running `tsc` first validates against stale definitions.
+
 ## Notes
 
 - Hooks are per-worktree: each clone/worktree needs one `npm install`/`bun install` for `core.hooksPath` to be set. CI is the enforcement backstop for anyone who skips installs.
 - Do NOT run the pipeline on a feature branch and commit the results there — that is exactly what caused the churn-in-PR problem. Drift cleanup belongs on its own chore branch off master.
+- **Build before check:** Always run `bun run build` before `composer check` (or the CI equivalent). `tsc --noEmit` reads generated definitions from the build output; checking first validates against stale definitions and produces false positives or misses real errors.
+- **Drift-cleanup prerequisite:** Formatting drift must be cleaned on a chore branch off master BEFORE installing the gate. The gate cannot pass on a tree with existing drift — that is the whole point. Clean first, gate second.
+- **Acceptance test:** After installing the gate, inject deliberate drift (e.g., remove a trailing semicolon from a PHP file) and verify `composer check` exits 1 and `composer fix` repairs it. This confirms the gate is live, not decorative.

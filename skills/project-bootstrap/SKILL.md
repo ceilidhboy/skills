@@ -39,6 +39,16 @@ Run `bun run build`, `composer fix`, and `git commit` (to confirm the pre-commit
 - [Pre-commit hook](references/pre-commit) — `.husky/pre-commit` contents (bare `lint-staged` — portable across npm and Bun)
 - [package.json snippets](references/package-json.snippets.json) — Scripts, lint-staged config, and devDependencies to merge
 
+## Gate-by-Default
+
+New projects start with check-mode CI, not fix-mode. This is the opposite of the legacy pattern where `composer fix` ran in CI, always exited 0, and silently repaired drift that was then discarded.
+
+- **CI lint workflow** uses `pint --test` + `biome ci` (check-only) — fails on drift.
+- **`composer check`** is the local equivalent — non-mutating, exits 1 on any drift.
+- **`composer fix`** is for local repair only — never run in CI as the sole quality gate.
+
+If you are bootstrapping a project that already has fix-mode CI, use the **formatting-enforcement** skill to retrofit check-mode. Do not leave fix-mode CI in place — it is an always-green gate that catches nothing.
+
 ## Notes
 
 - If a project already exists in production with legacy tooling (npm, ESLint, Prettier, or an always-green lint CI), use the **formatting-enforcement** skill — it covers the retrofit runbook (chore-branch cleanup of accumulated drift + gate + hooks) that this bootstrap flow assumes is done at creation time.
