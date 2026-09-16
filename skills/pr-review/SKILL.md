@@ -81,7 +81,7 @@ fi
 
 If the fast-forward fails, stop and ask the user rather than forcing anything.
 
-**Guard — modified tracked files.** If `git status --porcelain` shows modified *tracked* files, do not silently review over them. Report the paths and ask whether to commit, stash, or discard them. Ignored build artifacts (see step 2b) do not count — they are expected.
+**Guard — dirty working tree.** Before doing any review work, verify the review directory is clean. Run `git status --porcelain` and stop if there is *any* output — modified tracked files, untracked files, new files, deleted files, or staged changes. Previous reviews, abandoned experiments, or other branches may have left debris. Report the full `git status --porcelain` output and ask the user whether to commit, stash, or discard everything before proceeding. Ignored build artifacts (see step 2b) do not count — they are expected. Do not review over a dirty tree; it produces false findings and makes it impossible to tell which changes belong to the PR.
 
 **Check 2 — Same repo, different branch.** The directory is the right repository but not the PR branch. Ask the user where to work. **Do not create worktrees yourself** — worktree creation needs project-specific setup beyond git. Offer:
 
