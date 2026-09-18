@@ -15,7 +15,20 @@ Apply the Socially-Free standard toolchain to a Laravel + Inertia + React projec
 4. **Laravel Wayfinder** — The `generate:routing` composer script relies on `php artisan wayfinder:generate`. Install the Laravel Wayfinder package so this command is available. Follow the [Laravel Wayfinder installation instructions](https://github.com/earendil-works/laravel-wayfinder#installation) for your project.
 5. **CI workflows** — Copy `references/lint.yml` and `references/tests.yml` into `.github/workflows/`. The lint workflow uses **check-only** commands (`pint --test`, `biome ci`) so it FAILS on formatting drift instead of silently fixing and discarding it.
 6. **Formatting enforcement (hooks)** — Add `husky` + `lint-staged` (merge `references/package-json.snippets.json` into package.json, copy `references/pre-commit` into `.husky/pre-commit`), run `bun install` to wire the hooks. Pre-commit runs pint / biome --write / prettier --write on staged files only — Biome first, Prettier last, so Prettier owns the final on-disk state (CSS quote style, import order, Tailwind class order).
-7. **.gitignore** — Ensure `bun.lock` is tracked (not gitignored).
+7. **.gitignore** — Ensure `bun.lock` is tracked (not gitignored). If the `.gitignore` came from an existing project rather than the canonical gist, check it does not blanket-ignore `/storage` — see the next step for why that is fatal.
+8. **Storage skeleton** — Confirm Laravel's storage markers are tracked in git, not merely present on disk:
+
+   ```bash
+   git ls-files --error-unmatch storage/framework/views/.gitignore
+   ```
+
+   A failure means a clone gets **no storage tree at all** and every `artisan` command dies with `Please provide a valid cache path.` — `view.compiled` is resolved through `realpath()`, which returns `false` for a missing directory, and `Compiler::__construct()` throws on an empty cache path rather than creating one. `composer install` reaches it via `post-autoload-dump` → `package:discover`, which boots providers. This bites when the project was **copied** from another repo instead of scaffolded, because the copied `.gitignore` comes with it. Recover with:
+
+   ```bash
+   mkdir -p storage/framework/{cache/data,sessions,views} storage/app/{private,public} storage/logs
+   ```
+
+   then commit the ten marker files (each contains `*` + `!.gitignore`, or `compiled.php`/`config.php`/… for `storage/framework`). Only `/storage/*.key`, `/storage/pail` and `/storage/media-library` should be ignored individually; anything else at the storage root needs its own entry.
 
 Run `bun run build`, `composer fix`, and `git commit` (to confirm the pre-commit hook fires) to verify.
 
@@ -28,6 +41,8 @@ Run `bun run build`, `composer fix`, and `git commit` (to confirm the pre-commit
 - [ ] A deliberately misformatted staged file gets reformatted by the pre-commit hook on commit
 - [ ] `eslint.config.js` is deleted; `.prettierrc` and `.prettierignore` are kept (Prettier owns Tailwind class ordering + import organization)
 - [ ] `bun.lock` is committed, `package-lock.json` is deleted
+- [ ] `git ls-files --error-unmatch storage/framework/views/.gitignore` succeeds (skeleton tracked, not just on disk)
+- [ ] `.gitignore` does not blanket-ignore `/storage` — only `/storage/*.key`, `/storage/pail` and `/storage/media-library`
 - [ ] CI workflows reference Bun and Biome (check-only mode)
 
 ## References
@@ -36,7 +51,7 @@ Run `bun run build`, `composer fix`, and `git commit` (to confirm the pre-commit
 - [Biome config](references/biome.json) — Canonical Biome configuration (CSS quote style single; composer.json excluded from formatting — composer.json keeps its conventional key order)
 - [CI: Lint workflow](references/lint.yml) — Check-only Pint + Biome in CI (fails on drift)
 - [CI: Tests workflow](references/tests.yml) — Multi-PHP-version matrix with Bun build
-- [Pre-commit hook](references/pre-commit) — `.husky/pre-commit` contents (bare `lint-staged` — portable across npm and Bun)
+- [Pre-commit hook](references/pre-commit) — `.husky/pre-commit` contents (storage-skeleton guard, then bare `lint-staged` — portable across npm and Bun)
 - [package.json snippets](references/package-json.snippets.json) — Scripts, lint-staged config, and devDependencies to merge
 
 ## Gate-by-Default
@@ -54,3 +69,4 @@ If you are bootstrapping a project that already has fix-mode CI, use the **forma
 - If a project already exists in production with legacy tooling (npm, ESLint, Prettier, or an always-green lint CI), use the **formatting-enforcement** skill — it covers the retrofit runbook (chore-branch cleanup of accumulated drift + gate + hooks) that this bootstrap flow assumes is done at creation time.
 - The pre-commit hook intentionally uses the bare `lint-staged` command (no `npx` / `bunx` prefix) — the husky runner puts `node_modules/.bin` on PATH, so the same hook file works under both npm and Bun.
 - Hooks are per-worktree: each clone/worktree needs one `bun install` (or `npm install`) for `core.hooksPath` to be set. CI is the enforcement backstop for anyone who skips installs.
+- A missing storage skeleton is invisible to `git status`: `.gitignore` never untracks, so a repo carrying a blanket `/storage` rule looks healthy indefinitely and only fails when the tree has to be rebuilt — a fresh `git init` + `git add`, a clone where the markers were never tracked, or a `git clean -xfd`. That silence is why the pre-commit hook checks for it rather than leaving it to a checklist.
