@@ -6,6 +6,7 @@ This file contains hard-won lessons and rationale for the PR review workflow. Re
 
 - **Build production assets (`<pm> run build`) before the quality pipeline.** Generated route and type definitions are gitignored, so a fresh worktree carries stale ones from a previous build. `tsc` then reports phantom errors in files the PR never touched (e.g. `Property 'form' does not exist on type '...RouteDefinition...'`). The environment must match production before it is judged.
 - **Run the quality pipeline (`composer fix`) before starting any review work.** A green baseline means any errors found later are unambiguously the PR author's, not pre-existing drift. Auto-fixes should be committed **and pushed to the PR branch** immediately, so the branch starts clean and the review runs against the code the PR actually contains.
+- **A production-code finding is usually a missing test, so write the test before the fix.** If the review found a behavioural defect, the suite could not see it. Fixing the code first and back-filling a test afterwards yields a test fitted to the implementation, which can no longer detect the defect. Write the test, watch it fail for the right reason, fix the code, then revert the fix and confirm the test fails again — that last step is what separates a guard from documentation. This is a strong preference, not a mandate: when a test is impractical, record the reason in a clause. Step 11.5 is the procedure.
 - **Always pass an explicit generous `timeoutMs` on every child** (minimum 7,200,000 = 2h). The default run budget is 30 minutes and has killed far too many reviews of mid-size PRs — the parent died at the budget wall and cascade-killed a still-working oracle mid-analysis, losing ~30 minutes of work. A review of a 20+ file PR with test runs regularly needs 45–90 minutes per leg.
 - **Children are launched with `context: "fresh"` + a shared context file**, never `context: "fork"` — forking would drag this session's entire conversation into the children. The orchestration metadata lives in one file both children read.
 - **Keep the parent as orchestrator and final decision-maker.** Never post anything to the PR without the user's explicit approval.
@@ -48,6 +49,20 @@ An unpushed commit means the merged PR will not contain the fixes you just made 
 
 The baseline pipeline run (step 2.5) validated the pre-existing state. Step 11 validates the state after your inline fixes. Skipping step 11 means auto-fixes from your changes land uncommitted, and the approval is posted on code that is not green.
 
+### Why a production-code finding is usually a missing test, and why the test comes first
+
+A green pipeline is not evidence that the behaviour is right; it is evidence that the suite does not check that behaviour. This repo's own history makes the point twice in one day. A PR branch reported Pint green, Biome clean, Pest 646 passing and `tsc` clean while `bun run build` failed outright on a dangling import — nothing in the unit suite could see that, and the check that did catch it was the build. Elsewhere, two surfaces rendered the same column with different capitalisation, each pinned by its own passing test, so both suites stayed green and the mismatch was invisible until a human read both files.
+
+The second case is the shape to watch: the tests existed, passed, and still could not detect the defect. When a review finds behaviour that is wrong, that is the suite's hole showing, and the remedy is to close the hole rather than only patch the symptom. The order carries the value:
+
+- A test written **before** the fix fails against the unfixed code, proving both that the defect is real and that the test can detect it.
+- A test written **after** the fix is fitted to the implementation it was meant to guard, and can no longer fail for the original reason.
+- Reverting the fix must make the test fail again. If it stays green, it is documentation.
+
+This is a strong preference, not an absolute. A query-plan regression, a timing behaviour or a third-party integration may be impractical to test, and the fix should still ship — record the reason in a clause and name the check that would catch it instead. And when a finding needs no production-code change at all — stale prose in a PR body, a plan doc naming a class that no longer exists, a name collision that compiles fine, a product decision between two defensible behaviours — there is no test to write. Do not invent one to satisfy the shape of the rule; that produces tests fitted to the implementation, which is the failure mode this section exists to prevent.
+
+**Untested behaviour is worth flagging, and it is not the same as wrong behaviour.** Code that is correct only because nobody pinned it drifts on the next touch, so say so and name the test — but the test starts green, so it cannot be written red-first, and it is a guard to add rather than a defect to reveal. Flag it as a test gap; reserve the weight of a defect for behaviour that is actually wrong.
+
 ## Hard constraints
 
 - **Build production assets before the pipeline** — step 2b. Generated definitions are gitignored and stale in a fresh worktree; a red `tsc` caused by stale artifacts is an environment defect, never a PR finding.
@@ -58,6 +73,7 @@ The baseline pipeline run (step 2.5) validated the pre-existing state. Step 11 v
 - **Run the quality pipeline after any inline fixes** — step 11 exists because your changes may trigger Pint/Biome auto-fixes. Skipping it means the approval is posted on code that is not green.
 - **Same pipeline discipline after the review** — when the user asks you to fix findings on the PR branch after the review is posted, run `composer fix`, check `git diff` for auto-fixed files, commit them, and push. The pipeline discipline does not stop at step 13.
 - **Do not modify project source code during the review itself** — this is review-only work. The two exceptions are: (1) committing and pushing quality pipeline auto-fixes (Pint/Biome formatting) during step 2.5 to establish a clean baseline; (2) fixing trivial one-line findings in step 10. Both are pre-review hygiene, not review changes.
+- **A finding that changes production code carries a `Test:` line and is fixed red-first** — the test is written and observed failing before the production change, and the change is complete only once reverting it makes that test fail again. A prose-only finding carries no test line. Where a test is impractical, the preference yields and the reason is recorded in one clause (step 6, step 11.5).
 - **Never mention the review process** in the posted comment.
 - **Keep the review constructive** — focus on code, not people.
 - **Never post without approval** — Step 12 always precedes Step 13.

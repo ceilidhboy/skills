@@ -258,7 +258,14 @@ Merge the two reports into one structured document:
 4. **Authorisation & Scoping** — from the oracle's auth findings
 5. **Risk Areas** — from the oracle's risk findings
 6. **Previous Review Follow-up** — only when previous reviews exist: per-request status (✓ addressed / ⚠ still open), still-open items carried forward as repeat findings
-7. **Most actionable before merge** — your own prioritised list
+7. **Tests to add** — the tests the production-code findings call for, red-first where the code is currently wrong
+8. **Most actionable before merge** — your own prioritised list
+
+**Findings that require a change to production code carry a `Test:` line.** A defect in shipped behaviour is evidence that the suite has a hole, so the finding answers: which test should have caught this — `Test: <suite/file> — <assertion that fails without the fix>`? This is the preferred remedy, not an absolute one. State the reason on the same line when a test is impractical (a query-plan regression, a timing behaviour) or when the fix cannot be expressed as a test at all (a name that only reads badly), and name the owning workstream when the test belongs to other work — another ticket or a declared follow-up — so it is tracked rather than lost with the review. Skipping the line silently is the one thing not allowed: a preference nobody has to account for is a preference that quietly stops being followed.
+
+**Findings that need no production-code change carry no `Test:` line.** A stale PR description, a plan doc naming a class that no longer exists, an ADR that contradicts shipped behaviour, a naming or readability observation: the remedy is an edit to the prose or to the shape of the code, and inventing a test for them is category confusion. Where an automated check would genuinely have caught one — a reference check that fails when a documented class is deleted, a shared constant that makes a wrong label unrepresentable — name it, because that check is worth having. Otherwise say plainly that the remedy is prose.
+
+**Untested behaviour is worth flagging, and it is not the same as behaviour that is wrong.** Code that is correct only because nothing pins it will drift on the next touch, so name the missing test. But the test starts green, so it cannot be written red-first — it is a guard to add, not a defect to reveal. Flag it as a test gap and let the author schedule it; it does not carry the weight of wrong behaviour.
 
 **Issues keep full depth** (code snippets, impact, fix recommendations, file/line references). **Confirmed-correct items collapse to terse "✓" one-liners.** Do not merge or rerank across axes — keep sections separate.
 
@@ -306,7 +313,11 @@ Write the sanitised report there. The file lives in the review workspace and sur
 
 ### 10. Offer inline fixes
 
-Before presenting the report for approval, identify trivial one-line findings that can be fixed in 30 seconds (missing env var, renamed property, typo, missing docblock, missing test for a simple mapping). Do NOT fix them yet — first present the report to the user and ask whether to fix them inline or leave them for the PR author.
+Before presenting the report for approval, identify trivial one-line findings that can be fixed in 30 seconds and that need no production-code change — a typo, a stale comment or docblock, a misleading name, a reference to a file that no longer exists, formatting. Do NOT fix them yet — first present the report to the user and ask whether to fix them inline or leave them for the PR author.
+
+**A finding that requires a production-code change is not an inline fix** — rendered output, HTTP status, DB state, response props, query results, validation, accessibility semantics. Those want the test that was missing written alongside them, which is not a 30-second edit, and a silent inline fix leaves the suite as blind as it was when the finding was found. The exception is the operator telling you to fix one inline anyway: then the test comes with it (step 11.5).
+
+An inline fix is still a change, so it is committed and pushed like any other (step 11).
 
 **Present the report (step 12) with a note like:**
 
@@ -352,6 +363,23 @@ git push origin "$CURRENT_BRANCH"
 
 > **Same rule applies after the review is posted.** If the user asks you to fix findings on the PR branch later, treat every `composer fix` run the same way: check `git diff` for auto-fixed files, commit them, and push before declaring the task done. The pipeline discipline does not stop at step 13.
 
+### 11.5. Red first — fixing a production-code finding
+
+A defect in shipped behaviour means the suite had a hole, so the fix is not complete until the suite closes it. Work in this order — for your own fixes, and (stated in the posted review) for the author's. It applies to findings that change production code; a prose-only finding has no test step.
+
+**Shape A — the code is wrong.**
+
+1. **Decide the test.** Name the suite and the file (Pest feature/unit, Pest arch, Vitest component, lint rule) and the assertion that has to fail.
+2. **Write it against unchanged production code.**
+3. **Run it and record the failure** — the test must fail, and fail for the reason the finding describes. A test that passes before the fix does not reproduce the finding, so fix the test until it does. This is the point of the exercise: it proves the defect is real *and* that the test can detect it.
+4. **Only then change production code** — the smallest change that turns the test green. Never fix first and back-fill the test afterwards: a back-filled test is written to match the implementation, so it can no longer detect the defect.
+
+**Shape B — the code is right but nothing pins it.** Write the test; it starts green, because there is no defect to reveal. Its value is the guard, so validate it the same way: break the implementation temporarily, confirm the test fails, then restore.
+
+For both shapes: **re-run the full suite and the quality pipeline** (step 11's discipline: `composer fix`, stage only fixer-touched files, commit, push); **confirm the test is a real guard** by reverting the production change and watching the test fail again before restoring it — a test that stays green when the fix is removed is documentation; and **commit the test with the fix when a test applies**, because a fix commit with no test leaves no evidence the hole was closed.
+
+When a test is genuinely impractical, the fix still ships and the reason is recorded in one clause, naming the check that would catch it instead. When a previous round's fix is re-checked, the same standard applies: a change request counts as addressed if a test now fails without it, or the report says why no test applies.
+
 ### 12. Present for approval
 
 **Write the full report contents as your actual response text** — copy the Markdown directly into what you say to the user. Do NOT summarize it. Do NOT just read it into a tool output block and describe it. The user reads the report inline.
@@ -376,6 +404,8 @@ Then ask: "Post it? Revise something? Don't post?" — and act on the answer:
 2. The Bottom line verdict matches the remaining findings. If all 🟡/🔴 findings were fixed inline, the Bottom line should be 🟢 APPROVE and the body should contain no unresolved warnings.
 
 If there is a mismatch, fix the report body first, then post.
+
+**A request for changes asks for the tests alongside the fixes it asks for in production code.** Section 7 names each test, its file and its assertion, and step 11.5 fixes the order; say in the review body that the test for a production-code finding comes with the fix, and that a fix landing without one leaves the suite as blind as it was. Prose-only findings need no test — do not pad the review with synthetic ones. Lead the requested-changes section with the tests, then the code changes.
 
 Determine the review state from the report's Bottom line, then post:
 
