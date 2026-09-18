@@ -25,7 +25,7 @@ Apply the Socially-Free standard toolchain to a Laravel + Inertia + React projec
    A failure means a clone gets **no storage tree at all** and every `artisan` command dies with `Please provide a valid cache path.` — `view.compiled` is resolved through `realpath()`, which returns `false` for a missing directory, and `Compiler::__construct()` throws on an empty cache path rather than creating one. `composer install` reaches it via `post-autoload-dump` → `package:discover`, which boots providers. This bites when the project was **copied** from another repo instead of scaffolded, because the copied `.gitignore` comes with it. Recover with:
 
    ```bash
-   mkdir -p storage/framework/{cache/data,sessions,views} storage/app/{private,public} storage/logs
+   mkdir -p storage/framework/{cache/data,sessions,testing,views} storage/app/{private,public} storage/logs
    ```
 
    then commit the ten marker files (each contains `*` + `!.gitignore`, or `compiled.php`/`config.php`/… for `storage/framework`). Only `/storage/*.key`, `/storage/pail` and `/storage/media-library` should be ignored individually; anything else at the storage root needs its own entry.

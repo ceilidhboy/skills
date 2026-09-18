@@ -14,7 +14,7 @@ if [ -f artisan ] && ! git ls-files --error-unmatch storage/framework/views/.git
   echo "  A clone of this repo gets no storage tree and artisan will fail to boot."
   echo
   echo "  Check .gitignore does not blanket-ignore /storage, then:"
-  echo "    mkdir -p storage/framework/{cache/data,sessions,views} storage/app/{private,public} storage/logs"
+  echo "    mkdir -p storage/framework/{cache/data,sessions,testing,views} storage/app/{private,public} storage/logs"
   echo "  add the ten marker files, and commit them."
   exit 1
 fi
