@@ -138,7 +138,7 @@ MERGE_EXIT=$?
 
 ### 2b. Build production assets (before the pipeline)
 
-Generated frontend artifacts are **gitignored**, so a freshly checked-out worktree starts with whatever a previous build left behind — not what this branch needs. Wayfinder route and action definitions, Inertia/Ziggy helpers, and the Vite manifest are all in this category. When the branch adds or renames routes, `tsc` then fails on phantom errors such as `Property 'form' does not exist on type '...RouteDefinition...'` in files the PR never touched. Those errors burn review budget and mask real findings, and they are an environment defect, not a code defect.
+Generated frontend artifacts are **gitignored**, so a freshly checked-out worktree starts with whatever a previous build left behind — not what this branch needs. Wayfinder route and action definitions, Inertia/Ziggy helpers, and the Vite manifest are all in this category. When the branch adds or renames routes, `tsc` then fails on phantom errors such as `Property 'form' does not exist on type '...RouteDefinition...'` in files the PR never touched. Those errors burn review budget and mask real findings. They are caused by an unbuilt workspace, not by the branch, so the remedy is to build — never to report them, and never to dismiss them as pre-existing.
 
 Build the assets so the workspace matches production before anything type-checks against it:
 
@@ -157,8 +157,11 @@ Look for a `build` script in `package.json` — in Laravel + Wayfinder projects 
 |---|---|
 | Build succeeds | Proceed to step 2.5. Commit nothing — build outputs (`public/build`, generated route definitions) are gitignored. |
 | Build succeeds but modifies **tracked** files | Commit them as auto-fixes (`git add -A && git commit -m "chore: regenerate build artifacts"`), then proceed. If the diff is substantial rather than obviously generated, stop and ask the user. |
-| Build fails | **Stop.** Report the failure to the user. A failed build is an environment/setup problem, not a PR finding — never hand it to the review as one. |
+| Build fails because dependencies are missing, or artifacts are absent or stale | **Fix it.** Install dependencies and rebuild, then re-run. This is yours to solve, not a finding to report. |
+| Build fails on the branch's own code (a dangling import, a type error) | **Stop.** This **is** a PR finding and a blocker — report it with the failing output. It is not an environment defect, and the review must see it. |
 | No frontend build script (backend-only repo) | Skip this step, note it, and proceed to step 2.5. |
+
+**If generated-artifact errors appear anyway** — a missing Vite manifest, missing properties on Wayfinder definitions — do not classify them as pre-existing and do not hand them to the review. Run the build and re-run the pipeline. An error the merge would ship is an error, whatever produced it: production does not care that it predates the diff. Only a build that fails on the branch's own code is reportable, and then it is a blocker, not an environment note.
 
 **Why before the pipeline, not after:** `composer fix` runs `tsc`, and `tsc` reads those generated definitions. Building afterwards validates a different tree than the one that failed. See `guide.md` for the rationale.
 
