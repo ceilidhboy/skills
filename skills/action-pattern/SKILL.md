@@ -2,8 +2,8 @@
 name: action-pattern
 description: Creating and using action classes to encapsulate business logic. Actions replace traditional Service classes with reusable, composable, single-responsibility classes that follow a consistent `execute()` convention.
 author: Mike Scott
-version: '1.0.0'
-updated: '2026-07-11'
+version: '1.1.0'
+updated: '2026-09-25'
 ---
 
 # Action Pattern
@@ -29,6 +29,18 @@ Every action **must** have a public `execute()` method. This is the convention a
 - **Method signature**: Parameters and return type depend entirely on the action's functionality
 - **Naming**: Always `execute()` — never `handle()`, `__invoke()`, or other alternatives
 - **Statelessness**: The method should be callable multiple times with different parameters without side effects
+
+**One exception — vendor interfaces.** A class implementing a framework interface whose contract names the method keeps that name: the interface is the authority, not this convention. Laravel Fortify is the case in practice — it publishes `app/Actions/Fortify/CreateNewUser.php` and `ResetUserPassword.php` and expects `create()` and `reset()` through `CreatesNewUsers` and `ResetsUserPasswords`.
+
+The namespace carries the distinction, so no judgement is needed at review time:
+
+- `app/Actions/<Domain>/` — our actions: `final readonly class`, one public `execute()`.
+- `app/Actions/<Vendor>/` — vendor-published interface implementations. Their method names are imposed by the interface they implement.
+
+Two consequences worth knowing:
+
+- **Do not relocate vendor-published actions out of their vendor directory.** Fortify's installer writes its stubs to `app_path('Actions/Fortify/...')`, so moving them means a later `php artisan fortify:install` — or a starter-kit update — re-publishes them and leaves two classes with the same name, only one of which is bound.
+- **A listener is not an action.** A class whose job is to handle a framework event belongs in `app/Listeners/` and keeps Laravel's default `handle()` method, which is what a bare class-string `Event::listen()` registration resolves to. Renaming it to `execute()` to satisfy this convention breaks the registration — and either way it was in the wrong namespace.
 
 ### 3. Fixed Dependencies vs. Variable Parameters
 
