@@ -13,6 +13,8 @@ This file contains hard-won lessons and rationale for the PR review workflow. Re
 - **Keep the parent as orchestrator and final decision-maker.** Never post anything to the PR without the user's explicit approval.
 - **Verify the report body matches the verdict before posting.** If you fixed findings inline (step 10/11), update the report body to reflect the fixes — not just the Bottom line. A report that says "🟡 X is broken" in the body but shows 🟢 APPROVE at the bottom will confuse the PR author and cannot be edited after posting (GitHub review bodies are immutable). This is a real failure mode that has happened: the fix was correct but the posted review contradicted it.
 - **Read the whole conversation, and read it again before posting.** A PR is a dialogue, and developers answer a review in the comments — that is what the comment box is for. The description, the review bodies and the inline comments are not the conversation; the discussion thread is. A review built without it asked an author to answer three decisions he had already answered 78 minutes earlier, in a comment posted 20 minutes after the previous round, and that reply was invisible to the whole run. The failure was the review's evidence gathering, not the author's answer. Fetch `repos/<owner>/<repo>/issues/<number>/comments` in step 3 and re-fetch it in step 12, because a 45–90 minute review can outlive the reply to it.
+- **Re-verify the review workspace before trusting a read of it in a later turn.** The review directory is a shared worktree that gets switched to other branches between sessions, so a follow-up question can open on a tree that never held the PR. A `grep` for a symbol the PR added then returns nothing, which reads like the author having fixed it — a silent, confident false negative, and one that survives precisely because it looks like progress. Check the branch, `HEAD` and the working tree against the PR head before acting on any read (step 16).
+- **A branch-named worktree must hold that branch.** Checking out a feature branch into the `master`, `develop` or `staging` worktree has happened, and it is genuinely confusing: the name is the user's index of what is where, and after the switch they have to remember an exception to read their own directory. When the current directory names another branch, do not offer to switch it — ask where to work instead (step 2, Check 2). The general test is whether the directory's path names the branch it holds: if it does, the name is a promise about the contents and the directory is off limits; if it does not, it is scratch space, so offer the switch and recommend it.
 
 ## Why we do things this way
 
@@ -88,6 +90,22 @@ Step 12 re-reads the thread for a time-symmetry reason: the review runs for 45�
 
 **A reply is honoured as an answer, and its factual claims are still checked.** "The eyebrow was the target" is a decision the author owns, and it closes the requirement question. "Flash toasts now use sonner defaults" is a claim about what the code does, and it is testable — in the same case, that claim described the regression the same commit had introduced. Honour the decision; verify the fact.
 
+### Why the directory name decides where a review runs
+
+The user keeps one worktree per branch, named for it in full — `src/master`, `src/develop`, `src/staging`, then one per ticket branch carrying that branch's own prefix (`src/chore/<ticket>`, `src/feat/<ticket>`, `src/tickets/<ticket>`, `src/docs/<ticket>`) — plus a couple of generic ones (`src/wip`, `src/review/wip`) that change branch by design. The prefix set is open and has grown over time, so nothing parses it; the path simply carries the branch name verbatim. The name is therefore an assertion about the contents, and they navigate by it: seeing `src/master`, they assume master. A branch-named directory holding something else costs them the index they read their own checkout by, and the cost lands later, when they open `master` expecting `master`.
+
+That yields one test, with no list of magic names to keep current — **does the directory's path name the branch it is holding?**
+
+| Path names… | What it is | What to do |
+|---|---|---|
+| `PR_HEAD` | this branch's home; the checkout was forgotten | confirm, then switch here and recommend it |
+| the branch it holds, which is not `PR_HEAD` | another branch's home; the name promises those contents | do not offer it and do not switch it — ask where to work |
+| neither | scratch space, reused on purpose | offer the switch as the default |
+
+Run against the user's actual layout this classifies every worktree correctly: the seven branch-named ones all come out off limits, and the only two that come out generic — `wip` and `review/wip` — are exactly the two they switch between reviews.
+
+Compare words, not characters: case and separator style are cosmetic, so `feat/cool-thing`, `feat/CoolThing` and `feat/cool_thing` are one name. Compare the whole path, not the basename, and keep whatever prefix the branch has: `src/feat/issue-96-dashboard` names `feat/issue-96-dashboard` and `src/chore/install-vitest` names `chore/install-vitest`, though neither basename carries the prefix.
+
 ## Hard constraints
 
 - **Build production assets before the pipeline** — step 2b. Generated definitions are gitignored and stale in a fresh worktree. A red `tsc` caused by stale artifacts is yours to fix: run the build, then re-run the pipeline. Never label it "pre-existing" and never hand it to the review.
@@ -101,10 +119,12 @@ Step 12 re-reads the thread for a time-symmetry reason: the review runs for 45�
 - **A finding that changes production code carries a `Test:` line and is fixed red-first** — the test is written and observed failing before the production change, and the change is complete only once reverting it makes that test fail again. A prose-only finding carries no test line. Where a test is impractical, the preference yields and the reason is recorded in one clause (step 6, step 11.5).
 - **Read the whole conversation before reviewing, and again before posting** — step 3 and step 12. The author answers review questions in the discussion thread (`issues/<number>/comments`), not in the description or the reviews. Fetching `reviews` and `comments` and stopping there is an incomplete read, not a shorter one.
 - **Treat a reply as the answer to the question it answers** — an item the author has answered in a comment is ✓ addressed, never still open. Check any factual claim the reply makes against the code, but do not re-open the decision. Re-asking an answered question is a review defect.
+- **Re-check the workspace branch before any read in a later turn** — step 16. A shared review worktree is routinely switched to other branches, so a `git`/`grep` result from the wrong tree is a silent false negative that reads like author progress.
 - **Never mention the review process** in the posted comment.
 - **Keep the review constructive** — focus on code, not people.
 - **Never post without approval** — Step 12 always precedes Step 13.
 - **Always pass an explicit generous `timeoutMs`** on every child launch.
 - **Maximum concurrency for children is 2** — reviewer and oracle, in parallel.
-- **Do not create worktrees** — always ask the user where to work (see step 2, Check 2).
+- **Do not create worktrees** — always ask the user where to work (see step 2, Check 2). Checking out an existing branch in an existing worktree is not creation: when the current directory is the right repository, its path does *not* name the branch it holds (scratch space, `wip` or `review/wip` style) and `git status --porcelain` is empty, offer to check the PR branch out there and recommend it as the default. Clear a dirty tree through the guard first.
+- **Never switch a branch-named worktree to another branch** — step 2, Check 2. A directory whose path names a branch other than the PR's — `master`, `develop`, `staging`, or any ticket branch under any prefix — states that it holds that branch; putting the PR branch in it makes the name lie and costs the user their index of what is where. When the current directory names a different branch, do not offer it — ask where to work. The user may override; if they do, say which branch the directory will hold.
 - **Cleanup is explicit or automatic** — only once the PR is merged or closed.

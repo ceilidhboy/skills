@@ -83,13 +83,37 @@ If the fast-forward fails, stop and ask the user rather than forcing anything.
 
 **Guard — dirty working tree.** Before doing any review work, verify the review directory is clean. Run `git status --porcelain` and stop if there is *any* output — modified tracked files, untracked files, new files, deleted files, or staged changes. Previous reviews, abandoned experiments, or other branches may have left debris. Report the full `git status --porcelain` output and ask the user whether to commit, stash, or discard everything before proceeding. Ignored build artifacts (see step 2b) do not count — they are expected. Do not review over a dirty tree; it produces false findings and makes it impossible to tell which changes belong to the PR.
 
-**Check 2 — Same repo, different branch.** The directory is the right repository but not the PR branch. Ask the user where to work. **Do not create worktrees yourself** — worktree creation needs project-specific setup beyond git. Offer:
+**Check 2 — Same repo, different branch.** The directory is the right repository but not the PR branch. **Compare the directory's path with the branch it is holding before deciding anything** — the user keeps one worktree per branch, named for it **in full** (`src/master`, `src/develop`, then one per ticket branch under whatever prefix that branch uses: `src/chore/<ticket>`, `src/feat/<ticket>`, `src/tickets/<ticket>`), so the name is an assertion about the contents and their navigation depends on it. Never parse the prefix — it is `chore/`, `fix/`, `bugfix/`, `hotfix/`, `docs/`, `refactor/`, or nothing at all, and it changes — so compare the whole path suffix against the whole branch name. Only the generic ones (`src/wip`, `src/review/wip`) change branch by design. That gives one test with no list of magic names to maintain: **does the directory's path name the branch it holds?**
 
-1. **Use an existing worktree** — run `git worktree list`; if a worktree the user keeps for reviews exists (commonly `review/wip`, `wip`, or `.worktrees/<name>`), name it explicitly as the likely candidate
-2. **Create your own** — ask the user to create/check out a worktree and tell you the path
-3. **Check out the PR head in the current directory** — only if the user asks for it; do not do it unilaterally
+| Path names… | What it means | What to do |
+|---|---|---|
+| **`PR_HEAD`** | This worktree is the PR branch's home; the checkout was simply forgotten | Confirm, then check out `PR_HEAD` here, and recommend it plainly |
+| **the branch it holds, not `PR_HEAD`** (`master`, `develop`, `staging`, or any other branch under any prefix) | Another branch's home. The name promises those contents | **Do not offer this directory and do not switch it.** Name the mismatch and ask where to work — this is the case that needs a scratch worktree or a new one |
+| **neither** | Scratch space, reused across reviews on purpose | Offer it as the default (below): a clean tree means the switch was forgotten, not that the directory is taken |
 
-Set `WORKTREE_PATH` to whichever path the user selects.
+Compare words, not characters — case and separator style are cosmetic, so `hotfix/Payments-Down` and `hotfix/payments_down` are one name. Compare the whole path, not the basename, and keep the prefix in the comparison: `src/feat/issue-96-dashboard` names `feat/issue-96-dashboard` and `src/chore/install-vitest` names `chore/install-vitest`, though neither basename carries the prefix.
+
+```bash
+norm() { printf '%s' "$1" | tr 'A-Z' 'a-z' | tr '_-' '//'; }
+ends_with() { case "$1" in *"$2") return 0;; esac; return 1; }
+held="$(git branch --show-current)"   # the branch this directory currently holds
+if [ -z "$held" ]; then echo "generic (detached HEAD) -> offer, default yes"
+elif ends_with "$(norm "$PWD")" "$(norm "$PR_HEAD")"; then echo "names PR_HEAD -> switch here"
+elif ends_with "$(norm "$PWD")" "$(norm "$held")"; then echo "another branch's home -> do not offer"
+else echo "generic -> offer, default yes"; fi
+```
+
+For a generic directory or one named for `PR_HEAD`:
+
+1. **Check out `PR_HEAD` in the current directory — the default whenever `git status --porcelain` is empty.** Confirm with the user and recommend it. Run `git fetch origin "$PR_HEAD"`, then `git checkout "$PR_HEAD"`. If the checkout is refused, fall through to option 2 or 3 rather than forcing it.
+2. **Use a different existing worktree** — especially one already named for `PR_HEAD`. Run `git worktree list` and go there.
+3. **Let the user create one** — ask them to create/check out a worktree and tell you the path.
+
+**Do not create worktrees yourself** — creation needs project-specific setup beyond git — but checking out an existing branch in an existing worktree is not creation. If the user nonetheless directs you to use a directory named for another branch, follow the instruction and say which branch it will hold, so the exception is theirs and on the record rather than silent.
+
+A dirty tree blocks the switch: clear it through the guard above first, then offer this choice. Set `WORKTREE_PATH` to whichever path results, and announce it in the pre-flight line below before any further step.
+
+Step 16 re-checks the branch before any later read, for the same reason this step may switch it: the directory is shared, and it can move under you between turns.
 
 **Check 3 — Not in a repo with the right remote.** Ask the user: diff-only review (fast, GitHub API) or full clone (slower, better). Diff-only means both children use `gh pr diff <number> --repo <owner/repo>` and have no surrounding codebase.
 
@@ -454,6 +478,18 @@ When the user says "clean up review <number>": **only when the PR has been merge
 - If the user created a worktree for this review, ask them whether to remove it — do not remove it yourself
 
 ### 16. Follow-up questions
+
+**Re-check the workspace before you trust any read of it.** The review directory is a shared worktree, deliberately reused across reviews, and it gets switched to other branches between sessions. A session that ended on the PR branch can reopen on a different one, and every `git` or `grep` result then describes the wrong tree. A `grep` for a symbol the PR added returns nothing on a branch that never had it — which reads exactly like the author having fixed it. The failure is silent and confident, so it survives scrutiny: this has already produced a near-miss, where a ledger correct in every other respect was one command away from being posted about the wrong branch.
+
+```bash
+cd "$WORKTREE_PATH"
+git fetch origin "$PR_HEAD"
+git branch --show-current   # must equal PR_HEAD
+git rev-parse HEAD          # must equal the PR head SHA, not an earlier reviewed commit
+git status --porcelain      # must be empty before any read is trusted
+```
+
+When any of the four disagrees, repair the workspace before reading anything — check the PR head out into it, or ask the user when the switch was theirs and other work is in flight.
 
 The children's reports are in your session's context and the report/transcripts are on disk. Answer codebase questions directly, run tests the reviewer flagged, or revise the report on request. A completed leg can be resumed with `subagent({ action: "resume", id, message })` when its run is retained/resumable.
 
