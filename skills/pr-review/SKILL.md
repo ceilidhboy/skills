@@ -210,18 +210,27 @@ git diff $(git merge-base HEAD origin/master)..HEAD --stat
 
 > **Tip:** If you're unsure why we run the pipeline before reviewing, or what to do with the results, check `guide.md` for the rationale.
 
-### 3. Gather PR metadata and previous review history
+### 3. Gather PR metadata, the whole conversation, and previous review history
 
-`PR_HEAD`, `PR_BASE`, and `PR_TITLE` are already resolved (step 1.5). This step adds the description, file manifest, commits, and review history.
+`PR_HEAD`, `PR_BASE`, and `PR_TITLE` are already resolved (step 1.5). This step adds the description, file manifest, commits, and **the whole conversation**.
+
+**Read the whole conversation, not just the description.** A PR is a dialogue: a developer answers a review question, confirms a decision, or corrects the review's reading of the code **in a comment**, because that is what the comment box is for. A review built from the description and the reviews alone re-asks questions that have already been answered and reports answered items as open, which reads to the author as though the conversation was never opened. All four reads are required:
 
 ```bash
 gh pr view <number> --repo <owner/repo> --json number,title,body,headRefName,baseRefName,files,additions,deletions,author,state,createdAt
 gh pr view <number> --repo <owner/repo> --json commits
 gh api "repos/<owner>/<repo>/pulls/<number>/reviews?per_page=100" --jq '.[] | select(.state != "PENDING") | {id: .id, user: .user.login, body: .body, state: .state, commit_id: .commit_id, submitted_at: .submitted_at}'
 gh api "repos/<owner>/<repo>/pulls/<number>/comments?per_page=100" --jq '.[] | {id: .id, user: .user.login, body: .body, path: .path, line: .line, diff_hunk: .diff_hunk}'
+gh api "repos/<owner>/<repo>/issues/<number>/comments?per_page=100" --jq '.[] | {id: .id, user: .user.login, body: .body, created_at: .created_at}'
 ```
 
-Extract a compact summary: title, description, file list (path + additions + deletions), commit SHAs and messages, base branch, head branch, and **all previous review comments and change requests**. Record each previous review's `commit_id` — that is the SHA GitHub recorded for the round, and it is the only reliable way to tell what state a previous finding referred to once the branch has moved. Use it when reconciling change requests in step 6 and when checking for reversals in step 7.
+The last read is the **discussion thread**, and it is the one that gets dropped: `pulls/.../comments` returns *review* comments, while the author's reply to a review arrives as a *discussion* comment, so a round that fetches only the first three cannot see an answer at all. `gh pr view <number> --repo <owner/repo> --comments` prints the description and the whole thread in one read — keep it as the sanity check that nothing was missed.
+
+**A reply that answers a review question closes that item.** When the author comments "confirmed X was the target" or "no change needed here", the item is answered: mark it ✓ in the report and do not carry it forward as still open. Re-asking an answered question is a review defect rather than caution, and it was never the author's fault for answering where comments belong. A reply is an answer, so it outranks an inference from the code or the description.
+
+**Check any factual claim inside a reply against the code.** The two are not in tension: the decision a reply makes is the author's to make, and the fact it asserts is testable. A reply can be honest and still wrong about what the code does — for example one that says a change was scoped, when the same commit also removed a value other surfaces depended on. Honour the decision; verify the fact.
+
+Extract a compact summary: title, description, file list (path + additions + deletions), commit SHAs and messages, base branch, head branch, **all previous review comments and change requests**, and **every discussion comment in chronological order with its author and timestamp**. Record each previous review's `commit_id` — that is the SHA GitHub recorded for the round, and it is the only reliable way to tell what state a previous finding referred to once the branch has moved. Use it when reconciling change requests in step 6 and when checking for reversals in step 7.
 
 **Write the shared context file** — one file both children read, so task strings stay short and the two legs work from identical input:
 
@@ -231,7 +240,7 @@ mkdir -p "$REVIEW_DIR"
 CTX_FILE="$REVIEW_DIR/context.md"
 ```
 
-It contains: PR number/repo, title, description, file manifest, commit list, base/head branches, the review workspace path, **and the full previous review history** (all prior review comments and inline comments including change requests).
+It contains: PR number/repo, title, description, file manifest, commit list, base/head branches, the review workspace path, **the full previous review history** (all prior review bodies and inline comments including change requests), **and the whole discussion thread in chronological order** — every comment with its author, timestamp and body. The thread is where the author answers the review, so a round cannot reconcile change requests without it.
 
 ### 4. Launch reviewer and oracle in parallel
 
@@ -260,7 +269,7 @@ Merge the two reports into one structured document:
 3. **Pattern Consistency** — from the oracle's pattern/architecture findings
 4. **Authorisation & Scoping** — from the oracle's auth findings
 5. **Risk Areas** — from the oracle's risk findings
-6. **Previous Review Follow-up** — only when previous reviews exist: per-request status (✓ addressed / ⚠ still open), still-open items carried forward as repeat findings
+6. **Previous Review Follow-up** — only when previous reviews exist: per-request status (✓ addressed / ⚠ still open), reconciled against **both the author's replies in the discussion thread and the code at HEAD** — an item the author has answered in a comment is ✓ addressed even when the code never changed. Still-open items carry forward as repeat findings.
 7. **Tests to add** — the tests the production-code findings call for, red-first where the code is currently wrong
 8. **Most actionable before merge** — your own prioritised list
 
@@ -292,7 +301,7 @@ Reason: [one sentence — the single most important factor behind the verdict]
 
 ### 7. Check for contradiction reversals
 
-Before sanitising, cross-check every change request in the new report against the previous review history (from the context file). A reversal is a new request demanding the *opposite* of what a previous review asked for (rename X→Y then Y→X; action-class→service-class then back; extract-then-inline; approve-then-reject-code-that-was-approved). Refinements in the same direction, requests about new code, and repeats of never-implemented requests are NOT reversals.
+Before sanitising, cross-check every change request in the new report against the previous review history **and the author's replies to it** (both from the context file). A reversal is a new request demanding the *opposite* of what a previous review asked for (rename X→Y then Y→X; action-class→service-class then back; extract-then-inline; approve-then-reject-code-that-was-approved). Refinements in the same direction, requests about new code, and repeats of never-implemented requests are NOT reversals.
 
 For each reversal, read the actual code in the worktree, weigh both arguments against project conventions and the PR's intent, then:
 
@@ -385,6 +394,8 @@ When a test is genuinely impractical, the fix still ships and the reason is reco
 
 ### 12. Present for approval
 
+**Re-read the discussion thread before presenting.** The review ran for 45–90 minutes, so the author may have replied while it did — re-run the `issues/<number>/comments` read from step 3 and compare the timestamps with the context file. If a reply has answered an outstanding question or corrected a point, close or amend that finding in the report before presenting it. A review that arrives asking about something already answered on the PR spends the author's time and shows the conversation was never opened.
+
 **Write the full report contents as your actual response text** — copy the Markdown directly into what you say to the user. Do NOT summarize it. Do NOT just read it into a tool output block and describe it. The user reads the report inline.
 
 If step 10 identified trivial findings, append a line like:
@@ -405,6 +416,7 @@ Then ask: "Post it? Revise something? Don't post?" — and act on the answer:
 
 1. Every finding that was fixed inline (step 10/11) has been updated in the report body — not just the Bottom line. If a 🟡 finding was fixed, its text should now say ✓ (fixed) or be removed entirely. A report that still says "🟡 **X is broken**" in the body but shows 🟢 **APPROVE** in the Bottom line will confuse the PR author.
 2. The Bottom line verdict matches the remaining findings. If all 🟡/🔴 findings were fixed inline, the Bottom line should be 🟢 APPROVE and the body should contain no unresolved warnings.
+3. Nothing in the report asks a question the author has answered in the discussion thread since the report was assembled — re-check that thread, as step 12 does. The user's read of the report takes time too, and an author can reply in the meantime; amend the report body before posting.
 
 If there is a mismatch, fix the report body first, then post.
 

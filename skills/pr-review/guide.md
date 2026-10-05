@@ -12,6 +12,7 @@ This file contains hard-won lessons and rationale for the PR review workflow. Re
 - **Children are launched with `context: "fresh"` + a shared context file**, never `context: "fork"` — forking would drag this session's entire conversation into the children. The orchestration metadata lives in one file both children read.
 - **Keep the parent as orchestrator and final decision-maker.** Never post anything to the PR without the user's explicit approval.
 - **Verify the report body matches the verdict before posting.** If you fixed findings inline (step 10/11), update the report body to reflect the fixes — not just the Bottom line. A report that says "🟡 X is broken" in the body but shows 🟢 APPROVE at the bottom will confuse the PR author and cannot be edited after posting (GitHub review bodies are immutable). This is a real failure mode that has happened: the fix was correct but the posted review contradicted it.
+- **Read the whole conversation, and read it again before posting.** A PR is a dialogue, and developers answer a review in the comments — that is what the comment box is for. The description, the review bodies and the inline comments are not the conversation; the discussion thread is. A review built without it asked an author to answer three decisions he had already answered 78 minutes earlier, in a comment posted 20 minutes after the previous round, and that reply was invisible to the whole run. The failure was the review's evidence gathering, not the author's answer. Fetch `repos/<owner>/<repo>/issues/<number>/comments` in step 3 and re-fetch it in step 12, because a 45–90 minute review can outlive the reply to it.
 
 ## Why we do things this way
 
@@ -64,6 +65,29 @@ This is a strong preference, not an absolute. A query-plan regression, a timing 
 
 **Untested behaviour is worth flagging, and it is not the same as wrong behaviour.** Code that is correct only because nobody pinned it drifts on the next touch, so say so and name the test — but the test starts green, so it cannot be written red-first, and it is a guard to add rather than a defect to reveal. Flag it as a test gap; reserve the weight of a defect for behaviour that is actually wrong.
 
+### Why the whole conversation is read, twice (steps 3 and 12)
+
+GitHub keeps a PR's comments in three separate surfaces, and they are not interchangeable:
+
+| Surface | Endpoint | What lives there |
+|---|---|---|
+| Review bodies | `pulls/<n>/reviews` | each round's verdict and its full report |
+| Inline review comments | `pulls/<n>/comments` | comments anchored to a diff line |
+| Discussion thread | `issues/<n>/comments` | the back-and-forth under the description — **where the author answers the review** |
+
+Reading the first two and not the third produces a review that looks thorough and is wrong about the state of the change. There is no reply-to-a-review-body that lands in the reviews list: the author's answer to a review question arrives in the discussion thread, because that is the only surface with a reply box. A round that fetches only `reviews` and `comments` therefore cannot see any answer at all.
+
+This has failed for real. Round 1 asked for three decisions. The author answered all three in a discussion comment, with a per-decision breakdown, 20 minutes later. Round 2 fetched the reviews and the inline comments, filtered the branch, built the shared context file, ran both legs, and published a CHANGES_REQUESTED listing those same three decisions as "decisions required" — 78 minutes after the answers were posted. The author had done the right thing in the right place; the review had never opened the thread. It surfaced only because a later `gh api` call happened to list the thread while verifying something else, and correcting the record cost two further public comments.
+
+Two failure modes follow from the omission:
+
+- **Re-asking.** A question the author has answered comes back as an open decision. At best it spends their time; at worst it reads as a demand to re-justify a decision already made.
+- **Missing the correction.** An author may use a reply to correct the review's reading of the code. Without the thread, the review keeps arguing from a reading the author has already addressed — and the review's confidence in its own inference is exactly what makes that hard to notice.
+
+Step 12 re-reads the thread for a time-symmetry reason: the review runs for 45–90 minutes, so an author can answer while it runs. The report is assembled from a snapshot, and the snapshot ages. The same applies again at step 13, because the user's read of the report takes time too.
+
+**A reply is honoured as an answer, and its factual claims are still checked.** "The eyebrow was the target" is a decision the author owns, and it closes the requirement question. "Flash toasts now use sonner defaults" is a claim about what the code does, and it is testable — in the same case, that claim described the regression the same commit had introduced. Honour the decision; verify the fact.
+
 ## Hard constraints
 
 - **Build production assets before the pipeline** — step 2b. Generated definitions are gitignored and stale in a fresh worktree. A red `tsc` caused by stale artifacts is yours to fix: run the build, then re-run the pipeline. Never label it "pre-existing" and never hand it to the review.
@@ -75,6 +99,8 @@ This is a strong preference, not an absolute. A query-plan regression, a timing 
 - **Same pipeline discipline after the review** — when the user asks you to fix findings on the PR branch after the review is posted, run `composer fix`, check `git diff` for auto-fixed files, commit them, and push. The pipeline discipline does not stop at step 13.
 - **Do not modify project source code during the review itself** — this is review-only work. The two exceptions are: (1) committing and pushing quality pipeline auto-fixes (Pint/Biome formatting) during step 2.5 to establish a clean baseline; (2) fixing trivial one-line findings in step 10. Both are pre-review hygiene, not review changes.
 - **A finding that changes production code carries a `Test:` line and is fixed red-first** — the test is written and observed failing before the production change, and the change is complete only once reverting it makes that test fail again. A prose-only finding carries no test line. Where a test is impractical, the preference yields and the reason is recorded in one clause (step 6, step 11.5).
+- **Read the whole conversation before reviewing, and again before posting** — step 3 and step 12. The author answers review questions in the discussion thread (`issues/<number>/comments`), not in the description or the reviews. Fetching `reviews` and `comments` and stopping there is an incomplete read, not a shorter one.
+- **Treat a reply as the answer to the question it answers** — an item the author has answered in a comment is ✓ addressed, never still open. Check any factual claim the reply makes against the code, but do not re-open the decision. Re-asking an answered question is a review defect.
 - **Never mention the review process** in the posted comment.
 - **Keep the review constructive** — focus on code, not people.
 - **Never post without approval** — Step 12 always precedes Step 13.
