@@ -173,7 +173,7 @@ cd "$WORKTREE_PATH"
 bun run build
 ```
 
-Look for a `build` script in `package.json` — in Laravel + Wayfinder projects it is typically `php artisan typescript:transform && vite build`, and `vite build` is what regenerates `resources/js/actions` and `resources/js/routes`. A production build of a large app can take several minutes; give it a generous timeout and do not interrupt it. **The shell tool's `timeout` is in seconds, not milliseconds** — `timeout: 900` is generous for a large app, whereas `900000` is read as ~10 days and rejected outright (`Invalid timeout: maximum is 2147483.647 seconds`), so the build never runs. This is different from a child's `timeoutMs`, which *is* milliseconds (`7_200_000` = 2h).
+Look for a `build` script in `package.json` — in Laravel + Wayfinder projects it is typically `php artisan typescript:transform && vite build`, and `vite build` is what regenerates `resources/js/actions` and `resources/js/routes`. A production build of a large app can take several minutes; give it a generous timeout and do not interrupt it. **The shell tool's `timeout` is in seconds, not milliseconds** — `timeout: 900` is generous for a large app, whereas `900000` is read as ~10 days and rejected outright (`Invalid timeout: maximum is 2147483.647 seconds`), so the build never runs. This is different from a child's `timeoutMs`, which *is* milliseconds (`7_200_000` = 2h). Context-mode's `timeout` is also milliseconds: `timeout: 900000` for the same build — the value the shell tool rejects.
 
 **Interpret the result:**
 
