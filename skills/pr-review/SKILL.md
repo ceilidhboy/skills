@@ -250,7 +250,7 @@ gh api "repos/<owner>/<repo>/issues/<number>/comments?per_page=100" --jq '.[] | 
 
 The last read is the **discussion thread**, and it is the one that gets dropped: `pulls/.../comments` returns *review* comments, while the author's reply to a review arrives as a *discussion* comment, so a round that fetches only the first three cannot see an answer at all. `gh pr view <number> --repo <owner/repo> --comments` prints the description and the whole thread in one read — keep it as the sanity check that nothing was missed.
 
-**A reply that answers a review question closes that item.** When the author comments "confirmed X was the target" or "no change needed here", the item is answered: mark it ✓ in the report and do not carry it forward as still open. Re-asking an answered question is a review defect rather than caution, and it was never the author's fault for answering where comments belong. A reply is an answer, so it outranks an inference from the code or the description.
+**A reply that answers a review question closes that item.** When the author comments "confirmed X was the target" or "no change needed here", the item is answered: mark it ✅ in the report and do not carry it forward as still open. Re-asking an answered question is a review defect rather than caution, and it was never the author's fault for answering where comments belong. A reply is an answer, so it outranks an inference from the code or the description.
 
 **Check any factual claim inside a reply against the code.** The two are not in tension: the decision a reply makes is the author's to make, and the fact it asserts is testable. A reply can be honest and still wrong about what the code does — for example one that says a change was scoped, when the same commit also removed a value other surfaces depended on. Honour the decision; verify the fact.
 
@@ -293,9 +293,11 @@ Merge the two reports into one structured document:
 3. **Pattern Consistency** — from the oracle's pattern/architecture findings
 4. **Authorisation & Scoping** — from the oracle's auth findings
 5. **Risk Areas** — from the oracle's risk findings
-6. **Previous Review Follow-up** — only when previous reviews exist: per-request status (✓ addressed / ⚠ still open), reconciled against **both the author's replies in the discussion thread and the code at HEAD** — an item the author has answered in a comment is ✓ addressed even when the code never changed. Still-open items carry forward as repeat findings.
+6. **Previous Review Follow-up** — only when previous reviews exist: per-request status (✅ addressed / still open written severity-then-❌, e.g. `🔴❌` `🟡❌` `❔❌`), reconciled against **both the author's replies in the discussion thread and the code at HEAD** — an item the author has answered in a comment is ✅ addressed even when the code never changed. Still-open items carry forward as repeat findings.
 7. **Tests to add** — the tests the production-code findings call for, red-first where the code is currently wrong
 8. **Most actionable before merge** — your own prioritised list
+
+**Glyph vocabulary — one meaning each.** `🔴` blocker, `🟡` warning, `❔` minor, for findings that are still open; `✅` for fixed this round or verified correct, with the severity dropped; `⚠️` for reversal notes only. `🟢` is never a finding marker — it appears only in the Bottom line verdict, where green means "no problem, go". The red X is reserved for follow-up reviews and means *you were asked for this and did not fix it*: write it after the severity of a previously-requested item that is still open (`🔴❌`, `🟡❌`, `❔❌`), never on a new finding and never in an initial review. Open the report with the legend on one line so the code is self-describing.
 
 **Findings that require a change to production code carry a `Test:` line.** A defect in shipped behaviour is evidence that the suite has a hole, so the finding answers: which test should have caught this — `Test: <suite/file> — <assertion that fails without the fix>`? This is the preferred remedy, not an absolute one. State the reason on the same line when a test is impractical (a query-plan regression, a timing behaviour) or when the fix cannot be expressed as a test at all (a name that only reads badly), and name the owning workstream when the test belongs to other work — another ticket or a declared follow-up — so it is tracked rather than lost with the review. Skipping the line silently is the one thing not allowed: a preference nobody has to account for is a preference that quietly stops being followed.
 
@@ -303,12 +305,12 @@ Merge the two reports into one structured document:
 
 **Untested behaviour is worth flagging, and it is not the same as behaviour that is wrong.** Code that is correct only because nothing pins it will drift on the next touch, so name the missing test. But the test starts green, so it cannot be written red-first — it is a guard to add, not a defect to reveal. Flag it as a test gap and let the author schedule it; it does not carry the weight of wrong behaviour.
 
-**Issues keep full depth** (code snippets, impact, fix recommendations, file/line references). **Confirmed-correct items collapse to terse "✓" one-liners.** Do not merge or rerank across axes — keep sections separate.
+**Issues keep full depth** (code snippets, impact, fix recommendations, file/line references). **Confirmed-correct items collapse to terse "✅" one-liners.** Do not merge or rerank across axes — keep sections separate.
 
 Append a **"What's Correct"** appendix collecting every confirmed-correct item into one checklist, then the **Bottom line** verdict as the very last block:
 
-- 🟢 **APPROVE** — no blockers, no warnings, fewer than 3 minor issues (safe to track as follow-ups)
-- 🟡 **CONSIDER NOT APPROVING** — no hard blockers, but any 🟡 warning or 3+ 🟢 minors
+- 🟢 **APPROVE** — no blockers, no warnings, fewer than 3 ❔ minors (safe to track as follow-ups)
+- 🟡 **CONSIDER NOT APPROVING** — no hard blockers, but any 🟡 warning or 3+ ❔ minors
 - 🔴 **DO NOT APPROVE** — one or more 🔴 blockers
 
 Format (exactly one line plus a one-sentence reason):
@@ -438,7 +440,7 @@ Then ask: "Post it? Revise something? Don't post?" — and act on the answer:
 
 **Before posting, verify the report body matches the verdict.** Read through `$REPORT_FILE` and confirm that:
 
-1. Every finding that was fixed inline (step 10/11) has been updated in the report body — not just the Bottom line. If a 🟡 finding was fixed, its text should now say ✓ (fixed) or be removed entirely. A report that still says "🟡 **X is broken**" in the body but shows 🟢 **APPROVE** in the Bottom line will confuse the PR author.
+1. Every finding that was fixed inline (step 10/11) has been updated in the report body — not just the Bottom line. If a 🟡 finding was fixed, its text should now say ✅ (fixed) or be removed entirely. A report that still says "🟡 **X is broken**" in the body but shows 🟢 **APPROVE** in the Bottom line will confuse the PR author.
 2. The Bottom line verdict matches the remaining findings. If all 🟡/🔴 findings were fixed inline, the Bottom line should be 🟢 APPROVE and the body should contain no unresolved warnings.
 3. Nothing in the report asks a question the author has answered in the discussion thread since the report was assembled — re-check that thread, as step 12 does. The user's read of the report takes time too, and an author can reply in the meantime; amend the report body before posting.
 
@@ -459,7 +461,7 @@ gh pr review <number> --repo <owner/repo> $REVIEW_STATE --body-file "$REPORT_FIL
 
 ### 14. Offer to escalate outstanding findings to GitHub issues **only when the review is APPROVED**
 
-If the review is posted as an approval but the report still contains unresolved 🟡/🟢 findings that were NOT fixed inline, propose turning them into GitHub issues **assigned to the PR author** so they don't get lost. Do NOT offer this when the review is posted as CHANGES_REQUESTED — those findings already block the merge and are tracked in the PR thread; re-offer later only if the PR is closed without merging or the author explicitly punts a finding. Group only what shares a subsystem or fix class; keep self-contained fixes as their own issue. Check `gh issue list` for duplicates first, present the proposed list, and wait for an explicit yes — never create issues unprompted. Skip documentation-only items and anything another issue tracks.
+If the review is posted as an approval but the report still contains unresolved 🟡/❔ findings that were NOT fixed inline, propose turning them into GitHub issues **assigned to the PR author** so they don't get lost. Do NOT offer this when the review is posted as CHANGES_REQUESTED — those findings already block the merge and are tracked in the PR thread; re-offer later only if the PR is closed without merging or the author explicitly punts a finding. Group only what shares a subsystem or fix class; keep self-contained fixes as their own issue. Check `gh issue list` for duplicates first, present the proposed list, and wait for an explicit yes — never create issues unprompted. Skip documentation-only items and anything another issue tracks.
 
 Link the created issues from the PR (review bodies are immutable, so links go in a comment):
 
