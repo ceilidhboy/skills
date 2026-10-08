@@ -122,6 +122,7 @@ Compare words, not characters: case and separator style are cosmetic, so `feat/c
 - **Read the whole conversation before reviewing, and again before posting** — step 3 and step 12. The author answers review questions in the discussion thread (`issues/<number>/comments`), not in the description or the reviews. Fetching `reviews` and `comments` and stopping there is an incomplete read, not a shorter one.
 - **Treat a reply as the answer to the question it answers** — an item the author has answered in a comment is ✅ addressed, never still open. Check any factual claim the reply makes against the code, but do not re-open the decision. Re-asking an answered question is a review defect.
 - **Re-check the workspace branch before any read in a later turn** — step 16. A shared review worktree is routinely switched to other branches, so a `git`/`grep` result from the wrong tree is a silent false negative that reads like author progress.
+- **Prefix every GitHub number with `PR` or `issue`** — issues and pull requests share one numbering sequence per repository, so a bare number cannot be resolved by the reader; write `PR #221` or `issue #223` in headings, tables, prose and anything posted (step 6).
 - **Never mention the review process** in the posted comment.
 - **Keep the review constructive** — focus on code, not people.
 - **Never post without approval** — Step 12 always precedes Step 13.
