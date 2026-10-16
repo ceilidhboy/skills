@@ -297,7 +297,7 @@ Merge the two reports into one structured document:
 7. **Tests to add** — the tests the production-code findings call for, red-first where the code is currently wrong
 8. **Most actionable before merge** — your own prioritised list
 
-**Glyph vocabulary — one meaning each.** `🔴` blocker, `🟡` warning, `❔` minor, for findings that are still open; `✅` for fixed this round or verified correct, with the severity dropped; `⚠️` for reversal notes only. `🟢` is never a finding marker — it appears only in the Bottom line verdict, where green means "no problem, go". The red X is reserved for follow-up reviews and means *you were asked for this and did not fix it*: write it after the severity of a previously-requested item that is still open (`🔴❌`, `🟡❌`, `❔❌`), never on a new finding and never in an initial review. Open the report with the legend on one line so the code is self-describing.
+**Glyph vocabulary — one meaning each.** `🔴` blocker, `🟡` warning, `❔` minor, for findings that are still open; `✅` for fixed this round or verified correct, with the severity dropped; `⚠️` for reversal notes only. `🟢` is never a finding marker — it appears only in the Bottom line verdict, where green means "no problem, go". The red X is reserved for follow-up reviews and means *you were asked for this and did not fix it*: write it after the severity of a previously-requested item that is still open (`🔴❌`, `🟡❌`, `❔❌`), never on a new finding and never in an initial review. Open the report with the legend on one line so the code is self-describing, and name the three buckets beside it — `Inline fix`, `Issue`, `Decision` (step 10). Findings carry their bucket as a bracketed tag after the severity glyph, e.g. `❔ [Inline fix] …`, and the buckets are presented as separate groups in step 10's order, never interleaved. The bucket labels are words rather than glyphs, so the glyph vocabulary above stays one-meaning-each.
 
 **Never write a bare number for a GitHub artefact.** Issues and pull requests share one numbering sequence per repository, so `#221` is ambiguous by construction and a reader cannot resolve it. Write `PR #221` or `issue #223` everywhere — headings, tables, prose, and anything that will be posted (review bodies, PR comments, issue bodies, commit messages). The prefix is required even when the surrounding context seems to make it obvious, because these lines are usually skimmed in isolation.
 
@@ -351,23 +351,31 @@ REPORT_FILE="$REVIEW_DIR/report.md"
 
 Write the sanitised report there. The file lives in the review workspace and survives for follow-up questions.
 
-### 10. Offer inline fixes
+### 10. Bucket every finding and recommend a disposition
 
-Before presenting the report for approval, identify trivial one-line findings that can be fixed in 30 seconds and that need no production-code change — a typo, a stale comment or docblock, a misleading name, a reference to a file that no longer exists, formatting. Do NOT fix them yet — first present the report to the user and ask whether to fix them inline or leave them for the PR author.
+Assign **every** finding to exactly one of three buckets, and present each bucket as its own group, in this order:
 
-**A finding that requires a production-code change is not an inline fix** — rendered output, HTTP status, DB state, response props, query results, validation, accessibility semantics. Those want the test that was missing written alongside them, which is not a 30-second edit, and a silent inline fix leaves the suite as blind as it was when the finding was found. The exception is the operator telling you to fix one inline anyway: then the test comes with it (step 11.5).
+1. **Inline fix** — anything the review can correct in this session: prose, formatting, a comment or docblock, a name, a dangling reference, a missing test, a behaviour change pinnable with a red-first test, a small refactor. **Size is never a reason to knock a finding back to the author.** A finding leaves this bucket only when it needs a decision the review cannot make, needs access the review lacks, or belongs to work owned elsewhere.
+2. **Issue** — a finding that must not be fixed in this PR: out of scope, cross-cutting, or needing its own scheduling. Propose a title and an assignee — the PR author by default, the operator for administrative or data tasks that need their access.
+3. **Decision** — a finding whose remedy needs a choice only a human owns: product behaviour, whether a built-but-unrouted feature ships, a trade-off between defensible options, a deploy or production-data call, or access the review lacks. Give the options, the pros and cons of each, and your recommendation, so accepting the recommendation is a one-word answer.
+
+**The grouping and the order are deliberate: never interleave the three buckets in one table or list.** Inline fix comes first because approving that group unblocks work immediately; the other two can then be considered at leisure.
+
+Lead with the recommended disposition — `Inline fix: 7 (~2h) · Issue: 3 · Decision: 0` — so the operator's default answer is "accept", with per-item overrides. Flag any inline fix estimated over ~30 minutes, touching more than three files, or changing behaviour beyond the finding it fixes, so it can be vetoed individually. The disposition line is also the operator's signal of how much work the review is taking on.
+
+**Do not fix anything yet.** Fixing is the review's recommendation, never its own decision — wait for authorisation.
+
+**Red-first applies to every production-code fix, whatever its size.** A finding that changes production code carries a `Test:` line and is fixed test-first (step 11.5): write the test against the unchanged code, watch it fail for the right reason, then fix, then revert the fix to confirm the test still fails. An inline fix that skips this leaves the suite as blind as it was when the finding was found, and a silent fix is never acceptable — every fix is listed in the report with its commit and its test. Prose-only findings carry no test line.
 
 An inline fix is still a change, so it is committed and pushed like any other (step 11).
 
-**Present the report (step 12) with a note like:**
+**Present the report (step 12) with the disposition and a note like:**
 
-> I found [N] trivial finding(s) I can fix inline before posting. Want me to fix them now, or leave them for the author?
+> Recommended disposition: Inline fix: [N] (~[effort]) · Issue: [M] · Decision: [K]. Want me to fix the inline group now?
 
 Then:
-- **User says yes** → Fix the findings, commit each, proceed to step 11.
-- **User says no** → Skip step 11, proceed to step 12 with the report as-is.
-
-Do NOT create issues for things that take 30 seconds — issues are for design decisions, non-trivial implementation, or product input.
+- **Operator accepts** → Fix the inline findings, commit each, proceed to step 11, then propose the issues for approval (step 14).
+- **Operator overrides** → Apply the overrides; leave everything not authorised for the author.
 
 ### 11. Run quality pipeline on your changes (only if inline fixes were applied)
 
@@ -426,9 +434,9 @@ When a test is genuinely impractical, the fix still ships and the reason is reco
 
 **Write the full report contents as your actual response text** — copy the Markdown directly into what you say to the user. Do NOT summarize it. Do NOT just read it into a tool output block and describe it. The user reads the report inline.
 
-If step 10 identified trivial findings, append a line like:
+If step 10 assigned findings to buckets, append the disposition line and the three bucket groups — **Inline fix first, then Issue, then Decision**, as separate groups (step 10) — and ask about the inline group:
 
-> I found [N] trivial finding(s) I can fix inline before posting. Want me to fix them now, or leave them for the author?
+> Recommended disposition: Inline fix: [N] (~[effort]) · Issue: [M] · Decision: [K]. Want me to fix the inline group now?
 
 Then ask: "Post it? Revise something? Don't post?" — and act on the answer:
 
@@ -461,9 +469,9 @@ fi
 gh pr review <number> --repo <owner/repo> $REVIEW_STATE --body-file "$REPORT_FILE"
 ```
 
-### 14. Offer to escalate outstanding findings to GitHub issues **only when the review is APPROVED**
+### 14. Offer to escalate outstanding findings to GitHub issues
 
-If the review is posted as an approval but the report still contains unresolved 🟡/❔ findings that were NOT fixed inline, propose turning them into GitHub issues **assigned to the PR author** so they don't get lost. Do NOT offer this when the review is posted as CHANGES_REQUESTED — those findings already block the merge and are tracked in the PR thread; re-offer later only if the PR is closed without merging or the author explicitly punts a finding. Group only what shares a subsystem or fix class; keep self-contained fixes as their own issue. Check `gh issue list` for duplicates first, present the proposed list, and wait for an explicit yes — never create issues unprompted. Skip documentation-only items and anything another issue tracks.
+Propose a GitHub issue for every finding left unfixed once the disposition is settled — whether the review is posted as an approval or as a request for changes — so nothing is lost between rounds. This is the Issue bucket from step 10, presented with a proposed title and assignee: **the PR author by default**, and the operator for administrative or data tasks that need their access. Group only what shares a subsystem or fix class; keep self-contained fixes as their own issue. Check `gh issue list` for duplicates first, present the proposed list, and wait for an explicit yes — never create issues unprompted. Skip documentation-only items and anything another issue tracks.
 
 Link the created issues from the PR (review bodies are immutable, so links go in a comment):
 
