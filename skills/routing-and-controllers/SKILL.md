@@ -2,7 +2,7 @@
 name: routing-and-controllers
 description: Creating or editing a controller, or adding or editing a route in this project. Covers resourceful controllers, Route::resource and Route::singleton registration, why invokable controllers are not used here, and how routes map to Wayfinder TypeScript actions.
 author: Mike Scott
-version: '1.1.0'
+version: '1.2.0'
 updated: '2026-10-20'
 ---
 
@@ -34,6 +34,8 @@ These are rules. Apply them to everything you add or change; do not infer the co
    A hand-written `Route::get`/`post`/`put`/`patch`/`delete` is for a route that reaches **no** controller action (a closure, a redirect, a view) or for a nested resource. It is never a licence to name the method after the operation.
 6. **An external system constrains the URL and the HTTP verb, not our method names.** An OAuth callback (`GET /settings/xero/callback`), a webhook (`POST /webhooks/xero`) and an emailed magic link (`GET /passwordless/login/{token}`) all still use a resource action: `show()` for the GET, `store()` for the POST. If one controller would end up carrying several unrelated operations, split it into one resource controller per operation.
 7. **Route names follow resource and action** — `jobs.show`, `placement-confirmations.store`. Never a name that restates a verb (`jobs.pending`) or invents an action (`expense-documents.download`).
+8. **Never copy an existing violation.** If the controller or route you are editing already breaks these rules, correct it in the same change. Do not match the code around it.
+9. **An allowlist entry is debt to delete, never to add.** The guard test fails on a new invokable or a method outside the seven. If your change needs a new entry, the change is wrong.
 
 ## The Complete Workflow
 
