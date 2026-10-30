@@ -123,9 +123,9 @@ Step 16 re-checks the branch before any later read, for the same reason this ste
 
 This makes a wrong workspace visible immediately instead of surfacing 40 minutes later as bogus findings. If the announced line disagrees with the PR, stop and fix it before step 2a.
 
-### 2a. Merge master into the PR branch (pre-review sync)
+### 2a. Merge master into the PR branch (conflict check)
 
-Before reviewing, ensure the PR branch is up to date with master. This catches merge conflicts early and confirms the branch integrates cleanly.
+Before reviewing, confirm the branch still integrates with master. This catches merge conflicts early and confirms the branch merges cleanly. The merge itself is then discarded (below), because it is a probe, not a change to the PR.
 
 **Fetch latest master:**
 
@@ -145,8 +145,20 @@ MERGE_EXIT=$?
 
 | Outcome | Action |
 |---|---|
-| Merge succeeds (exit 0) | Proceed to step 2b. Branch is up to date. |
+| Merge succeeds (exit 0) | The branch integrates cleanly. **Drop the merge again** (below), then proceed to step 2b. |
 | Merge conflicts | **Stop.** Report the conflicts to the user and ask for a decision. Do **not** auto-resolve. |
+
+**The merge is a conflict probe, not a change to the PR — drop it before you commit anything.**
+
+This step answers one question: does the branch integrate with master? It is answered the moment the merge succeeds, and the merge commit then has no further job. Leaving it in place is what makes the later pushes awkward: every commit the review makes sits on top of a commit the remote has never seen, and the tempting fix is to rebase your work onto the PR head to get rid of it. **Never do that** — rebase is forbidden (`guide.md`, Hard constraints). Reset instead, and do it now, while nothing of yours is committed:
+
+```bash
+git reset --hard origin/"$PR_HEAD"
+```
+
+The branch is exactly the author's head again, every commit this review makes lands on it directly, and each push is a plain fast-forward. What this step contributes is the finding — "master merges cleanly" — which belongs in the context file and the report, not a commit.
+
+Do not skip the reset and push the merge commit instead "because it is a fast-forward anyway". It would be one, but it puts a merge into the PR's history that the author did not make, and the next agent reading the branch cannot tell whose merges are whose.
 
 **If there are merge conflicts:**
 
@@ -156,7 +168,7 @@ MERGE_EXIT=$?
    >
    > How would you like to proceed?
    > 1. **Fix the conflicts now** — I'll resolve them and commit, then continue with the review.
-   > 2. **Hand back to the PR author** — ask them to rebase/merge master themselves before the review.
+   > 2. **Hand back to the PR author** — ask them to merge master themselves before the review.
    > 3. **Abort the review** — stop here.
 3. **Wait for the user's decision** before doing anything else.
 
@@ -408,6 +420,8 @@ git push origin "$CURRENT_BRANCH"
 ```
 
 **Do not skip this.** An unpushed commit means the merged PR will not contain the fixes you just made — the approval is posted on code that doesn't include your changes.
+
+**If the push is rejected as non-fast-forward, or you find a local merge commit under your work, reset — never rebase.** A rebase rewrites commits, and the moment one of them is on the remote it needs a force push to land. Step 2a drops its merge commit precisely so this cannot arise; if it does anyway, get your work back onto the PR head without rewriting anything: `git reset --hard origin/"$PR_HEAD"` and cherry-pick your commits from a backup branch (a cherry-pick creates new commits, so nothing on the remote is rewritten). Never `git push --force`, and never rebase a commit that is already on the remote — merge instead.
 
 > **Same rule applies after the review is posted.** If the user asks you to fix findings on the PR branch later, treat every `composer fix` run the same way: check `git diff` for auto-fixed files, commit them, and push before declaring the task done. The pipeline discipline does not stop at step 13.
 
