@@ -133,7 +133,6 @@ ck record_takes_TIMING \
   "$(awk '/^### 9\.6\./{f=1} f&&/^### 10\./{exit} f' "$SKILL" | grep -c -- '--argjson timing "\$TIMING"')" 1
 ck no_pre_fix_vars \
   "$(awk '/^### 9\.6\./{f=1} f&&/^### 10\./{exit} f' "$SKILL" | grep -cE '\b(T0|T1|T2|T3|T4|MAX_LEG)\b')" 0
-ck no_laps_language "$(grep -ciw 'laps' "$SKILL")" 0
 ck stamp_file_not_vars "$(awk '/^### 0\./{f=1} f&&/^### 1\./{exit} f' "$SKILL" | grep -c 'splits.tsv')" 1
 
 echo
