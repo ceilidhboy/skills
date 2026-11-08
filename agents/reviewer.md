@@ -72,6 +72,21 @@ If runtime bridge instructions identify a safe supervisor target and you are blo
 
 Fall back to generic `intercom` only if `contact_supervisor` is unavailable and the runtime bridge instructions identify a safe target. If no safe target is discoverable, do not guess.
 
+## Labels and the progress checkpoint
+
+Tag **every** finding with exactly one label from `standards.md` (the standards file path is given
+in your task), and take your severity from its table rather than deciding afresh.
+
+Exactly one sanctioned use of `progress_update`: when an **axis is finished**, send that axis's
+findings to the supervisor in the final format, once, before starting the next axis. The review is
+long enough that a run can be killed mid-flight (most often by machine memory pressure on a box
+running several reviews at once); a finished axis sent at the checkpoint survives that, and costs
+nothing but one message.
+
+This is not narration. Two checkpoints for two axes. Do not send interim thinking, do not stream
+findings as you discover them, and do not send a completion handoff — the final review is still
+returned normally.
+
 ## Review output format
 Structure your findings clearly:
 

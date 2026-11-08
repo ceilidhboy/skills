@@ -248,6 +248,15 @@ git diff $(git merge-base HEAD origin/master)..HEAD --stat
 
 ### 3. Gather PR metadata, the whole conversation, and previous review history
 
+Pass both children the path to the committed standards file:
+
+```bash
+STANDARDS_FILE="$(dirname "$0")/standards.md"   # skills/pr-review/standards.md
+```
+
+It fixes severity (🔴 / 🟡 / ❔) and owns the finding-label vocabulary. It is read by reference, not
+copied into the context file, so amending it changes the next review without editing any prompt.
+
 `PR_HEAD`, `PR_BASE`, and `PR_TITLE` are already resolved (step 1.5). This step adds the description, file manifest, commits, and **the whole conversation**.
 
 **Read the whole conversation, not just the description.** A PR is a dialogue: a developer answers a review question, confirms a decision, or corrects the review's reading of the code **in a comment**, because that is what the comment box is for. A review built from the description and the reviews alone re-asks questions that have already been answered and reports answered items as open, which reads to the author as though the conversation was never opened. All four reads are required:
@@ -362,6 +371,34 @@ REPORT_FILE="$REVIEW_DIR/report.md"
 ```
 
 Write the sanitised report there. The file lives in the review workspace and survives for follow-up questions.
+
+### 9.5. Append the review record
+
+One line per review, appended to the durable log — this is the only artefact that outlives the run,
+and the only way a recurring finding can ever be spotted. The RAM-disk report is deliberately
+ephemeral; the log is deliberately not.
+
+```bash
+REVIEW_LOG="${REVIEW_LOG:-$HOME/.pi/agent/state/reviews.jsonl}"
+mkdir -p "$(dirname "$REVIEW_LOG")"
+printf '%s\n' "$(jq -nc \
+  --arg date "$(date -Iseconds)" \
+  --arg repo "<owner/repo>" \
+  --argjson pr <number> \
+  --arg sha "$PR_HEAD_SHA" \
+  --arg verdict "<approve|request-changes|not-posted>" \
+  --argjson legs '{"reviewer":"<ok|died|timeout>","oracle":"<ok|died|timeout>"}' \
+  --argjson counts '{"blocker":N,"warning":N,"minor":N}' \
+  --argjson labels '["<label>","<label>"]' \
+  '{date:$date,repo:$repo,pr:$pr,sha:$sha,verdict:$verdict,legs:$legs,counts:$counts,labels:$labels}')" >> "$REVIEW_LOG"
+```
+
+- `labels` is the de-duplicated set of labels from `standards.md` that this review actually raised.
+  A fixed vocabulary makes recurrence a `GROUP BY`, not a text search:
+  `jq -r .labels[] "$REVIEW_LOG" | sort | uniq -c | sort -rn`.
+- Write the line **even when the review is not posted** (user declined, or a leg died): a killed
+  review is exactly the evidence needed for "this keeps happening".
+- Never write findings prose here. The line records what kind and how much, never what was said.
 
 ### 10. Bucket every finding and recommend a disposition
 
