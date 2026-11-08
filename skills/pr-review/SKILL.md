@@ -15,6 +15,39 @@ Review artifacts (context file, report) must live in a RAM disk, not in the proj
 
 ## Workflow
 
+### 0. Open the split-time log
+
+Split times are captured **as each phase ends**, never reconstructed afterwards. A bash call is its
+own shell, so a variable set in step 4 is gone by step 9 — the stamps therefore go into a file, one
+append per phase:
+
+```bash
+SPLITS="${XDG_RUNTIME_DIR:-/tmp}/pr-review/<number>/splits.tsv"
+```
+
+Each stamp is this command, with the name substituted; the file (and its directory) are created by
+the first append:
+
+```bash
+mkdir -p "$(dirname "$SPLITS")" && printf '%s\t%s\n' <name> "$(date +%s%3N)" >> "$SPLITS"
+```
+
+| Stamp | Emit at | Means |
+|---|---|---|
+| `t0` | here, before any preflight | skill activated |
+| `preflight_end` | end of step 3 | PR parsed, worktree ready, context and standards files written |
+| `legs_start` | step 4, after both launches have returned | both legs are running |
+| `legs_end` | step 5, the moment the last leg returns | both legs finished |
+| `assembly_end` | end of step 9 | consolidation, reversal check, sanitisation and report write done |
+| `t4` | step 13 after posting — or immediately before the final answer when the review is not posted | delivered |
+
+Emit `t0` now. Then emit each remaining stamp **at the step named**, as that phase ends.
+
+If a phase genuinely did not happen — a leg died, the review was not posted — stamp the moment you
+decided that. A `legs_end` recorded at the instant you gave up on a leg is true and useful; a stamp
+you leave out because the step did not run cleanly is a measurement you lose for good. Step 9.5
+treats a missing stamp as a failure and says so.
+
 ### 1. Parse the request
 
 Extract the PR number and optional owner/repo from:
@@ -372,33 +405,66 @@ REPORT_FILE="$REVIEW_DIR/report.md"
 
 Write the sanitised report there. The file lives in the review workspace and survives for follow-up questions.
 
-### 9.5. Timing
+### 9.5. Split times
 
-Record the laps, do not narrate them. A review is long enough that the shape of its cost is worth
-knowing, and knowing whether 18 minutes is the legs or the assembly changes what to optimise — but a
-timing block on every report is noise. So: **always measure, log into the record, and show the
-numbers only when asked** (or in the aggregate over the record).
+Record the splits; do not narrate them in the report. A review is long enough that the shape of its
+cost is worth knowing, and knowing whether 18 minutes is the legs or the assembly changes what to
+optimise — but a timing block on every report is noise. So: **always measure, log into the record,
+and show the numbers only when asked** (or in the aggregate over the record).
 
-Take these stamps as wall-clock seconds:
+Derive them from the stamps emitted in step 0. Those values are epoch **milliseconds**, so the
+differences are already milliseconds:
 
 ```bash
-T0=$(date +%s)   # the instant the skill is activated, before any preflight
-T1=$(date +%s)   # preflight done: PR parsed, worktree ready, context + standards files written
-# T2a/T2b    each leg's completion, as returned by the launch
-T3=$(date +%s)   # consolidation finished and the report written
-T4=$(date +%s)   # report delivered to the user, or posted to the PR
+declare -A S
+while IFS=$'\t' read -r k v; do S[$k]=$v; done < "$SPLITS"
+
+missing=()
+for k in t0 preflight_end legs_start legs_end assembly_end t4; do
+  [ -n "${S[$k]:-}" ] || missing+=("$k")
+done
+
+if [ ${#missing[@]} -eq 0 ]; then
+  TIMING=$(jq -nc \
+    --argjson t0 "${S[t0]}"   --argjson p  "${S[preflight_end]}" \
+    --argjson ls "${S[legs_start]}" --argjson le "${S[legs_end]}" \
+    --argjson a  "${S[assembly_end]}" --argjson t4 "${S[t4]}" \
+    --argjson rev "${REVIEWER_MS}" --argjson ora "${ORACLE_MS}" \
+    '{t0:$t0,
+      preflight_ms:($p-$t0),
+      dispatch_ms:($ls-$p),
+      legs_ms:($le-$ls),
+      assembly_ms:($a-$le),
+      delivery_ms:($t4-$a),
+      total_ms:($t4-$t0),
+      reviewer_ms:$rev,
+      oracle_ms:$ora,
+      timing_complete:true}')
+else
+  TIMING=$(printf '%s\n' "${missing[@]}" | jq -R . | jq -sc \
+    '{timing_complete:false, timing_missing:.}')
+  echo "⚠ TIMING INCOMPLETE — missing stamp(s): ${missing[*]}" >&2
+fi
 ```
+
+`REVIEWER_MS` and `ORACLE_MS` are each leg's own elapsed time, as returned by its launch.
 
 Two facts that make the numbers mean something:
 
-- **The legs run in parallel, so their laps overlap.** `reviewer_ms + oracle_ms` will exceed the
-  legs phase, and that is correct, not a bug. Report the legs phase as the **longer** of the two.
-- **Only `total` is a duration a human experiences.** Preflight and assembly are the parts you
+- **The legs run in parallel, so the splits overlap.** `reviewer_ms + oracle_ms` exceeds
+  `legs_ms`, and that is correct, not a bug — `legs_ms` is the wall clock from the first launch to
+  the last return.
+- **Only `total_ms` is a duration a human experiences.** Preflight and assembly are the parts you
   control; the legs are the parts the model controls. If total grows, check which one before
   reaching for anything else.
 
-Never block or re-run a step to tidy up a measurement. A missing stamp is recorded as `null`,
-not guessed.
+Never block or re-run a step to tidy up a measurement.
+
+**A missing split is loud, never silent.** The record is still written — the findings are worth more
+than the timings — but it carries `timing_complete:false` and the names of the stamps that never
+landed, and the run says so in its own output. Six `null`s look exactly like a fast review to
+anybody reading the log a month later, which is worse than having no timing at all.
+
 
 ### 9.6. Append the review record
 
@@ -418,7 +484,7 @@ printf '%s\n' "$(jq -nc \
   --argjson legs '{"reviewer":"<ok|died|timeout>","oracle":"<ok|died|timeout>"}' \
   --argjson counts '{"blocker":N,"warning":N,"minor":N}' \
   --argjson labels '["<label>"]' \
-  --argjson timing '{"t0":T0,"preflight_ms":(T1-T0)*1000,"legs_ms":(MAX_LEG-END)*1000,"assembly_ms":(T3-T2)*1000,"delivery_ms":(T4-T3)*1000,"total_ms":(T4-T0)*1000}' \
+  --argjson timing "$TIMING" \
   '{date:$date,repo:$repo,pr:$pr,sha:$sha,verdict:$verdict,legs:$legs,counts:$counts,labels:$labels,timing:$timing}')" >> "$REVIEW_LOG"
 ```
 
@@ -426,18 +492,30 @@ printf '%s\n' "$(jq -nc \
   A fixed vocabulary makes recurrence a `GROUP BY`, not a text search:
   `jq -r .labels[] "$REVIEW_LOG" | sort | uniq -c | sort -rn`.
 - `timing.legs_ms` is the **longer** leg, not the sum — the legs overlap.
+- `timing.timing_complete` is `false` when a split stamp never landed, and `timing.timing_missing`
+  names it. Those rows are still worth keeping for the findings, but exclude them from timing
+  statistics or a broken measurement re-enters the average as if it were a fast review.
 - Write the line **even when the review is not posted** (user declined, or a leg died): a killed
   review is exactly the evidence needed for "this keeps happening".
 - Never write findings prose here. The line records what kind, how much and how long — never what
   was said.
 
-Then answer timing questions from the log rather than from memory:
+Then answer timing questions from the log rather than from memory. Everything below is **minutes**;
+`total_min`/`total_mean`/`total_max` are the likely band for planning a batch, and rows with an
+incomplete measurement are counted but excluded from the statistics:
 
 ```bash
-jq -s '{n:length,
-        median_total: ([.[].timing.total_ms]|sort|.[length/2|floor]/60000),
-        median_legs:  ([.[].timing.legs_ms] |sort|.[length/2|floor]/60000),
-        median_assembly: ([.[].timing.assembly_ms]|sort|.[length/2|floor]/60000)}' "$REVIEW_LOG"
+jq -s '[.[] | select(.timing.timing_complete)] as $r
+| { reviewed: length,
+    timed: ($r|length),
+    incomplete: (length - ($r|length)),
+    total_min:    (($r|map(.timing.total_ms)|min) / 60000),
+    total_mean:   (($r|map(.timing.total_ms)|add / ($r|length)) / 60000),
+    total_median: (($r|map(.timing.total_ms)|sort|.[length/2|floor]) / 60000),
+    total_max:    (($r|map(.timing.total_ms)|max) / 60000),
+    median_legs:     (($r|map(.timing.legs_ms)|sort|.[length/2|floor]) / 60000),
+    median_assembly: (($r|map(.timing.assembly_ms)|sort|.[length/2|floor]) / 60000)
+  }' "$REVIEW_LOG"
 ```
 
 ### 10. Bucket every finding and recommend a disposition
