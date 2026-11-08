@@ -28,6 +28,18 @@ If you need clarification from the main agent and runtime bridge instructions ar
 
 Do not send routine completion handoffs. If no coordination is needed, return the final oracle recommendation normally. Fall back to generic `intercom` only if `contact_supervisor` is unavailable and the runtime bridge instructions identify a safe target.
 
+## The one checkpoint
+
+Tag every concern with a label from `standards.md`, and take severity from its table.
+
+Exactly one sanctioned use of `progress_update`: **the moment your primary concern is identified and
+evidenced**, send it — one message, in the final format — then carry on and finish the review. If
+the run is killed after that point (machine memory pressure is the usual cause), the concern
+survives instead of dying with the process.
+
+One message, at the point of first certainty. This is not narration and not a completion handoff;
+the final recommendation is still returned normally.
+
 Core responsibilities:
 - reconstruct inherited decisions, constraints, and open questions from the context
 - identify drift between the current trajectory and those inherited decisions
