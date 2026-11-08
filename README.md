@@ -58,7 +58,6 @@ bash scripts/verify-skills.sh --mode dev
 | boost-documentation-search | Search Laravel Boost documentation effectively |
 | component-composition-patterns | Building reusable components through composition |
 | creating-pull-requests | Company pull request workflow and branch policy — know how (and how not) to create PRs |
-| formatting-enforcement | Retrofit formatting enforcement on existing projects — fix silent-green lint CI, clear accumulated drift, resolve Prettier/Biome conflicts, install pre-commit hooks |
 | github-cli-workarounds | Workarounds for shell escaping with `gh` CLI |
 | html-output | Generate self-contained HTML documents with inline SVG diagrams, grids, and colour styling. Use when visual presentation benefits understanding |
 | inertia-react-conventions | Inertia.js v2 React component architecture and project conventions |
@@ -66,7 +65,6 @@ bash scripts/verify-skills.sh --mode dev
 | monthly-report-generator | Generate monthly development reports for clients from git history, PRs, and ADRs — HTML for web, Markdown for email, optional wiki publishing |
 | pest-testing-conventions | Pest 4 PHP testing conventions, workflows, and troubleshooting |
 | pr-review | Orchestrated PR reviews — runs reviewer + oracle sub-agents directly, consolidates findings into a structured report, and asks for approval before posting (the former pi-pr-reviewer package has been retired; this skill is the replacement). Supporting files: `children.md` (the per-leg prompts), `guide.md`, and `standards.md` — the severity table and 14 finding labels that fix how every finding is graded and tagged |
-| project-bootstrap | Company tooling standard for new Laravel + Inertia + React projects — Bun, Biome, Pint, Wayfinder, check-only CI, pre-commit hooks |
 | refactor-comments-that-are-code-smells | Code quality — refactor comments that explain what code does |
 | routing-and-controllers | Laravel controllers, routes, and Wayfinder mapping |
 | serena-conventions | Serena-first code navigation — correct parameter shapes, when to use Serena vs context-mode, common workflows for Laravel model editing |
