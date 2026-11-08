@@ -372,7 +372,35 @@ REPORT_FILE="$REVIEW_DIR/report.md"
 
 Write the sanitised report there. The file lives in the review workspace and survives for follow-up questions.
 
-### 9.5. Append the review record
+### 9.5. Timing
+
+Record the laps, do not narrate them. A review is long enough that the shape of its cost is worth
+knowing, and knowing whether 18 minutes is the legs or the assembly changes what to optimise — but a
+timing block on every report is noise. So: **always measure, log into the record, and show the
+numbers only when asked** (or in the aggregate over the record).
+
+Take these stamps as wall-clock seconds:
+
+```bash
+T0=$(date +%s)   # the instant the skill is activated, before any preflight
+T1=$(date +%s)   # preflight done: PR parsed, worktree ready, context + standards files written
+# T2a/T2b    each leg's completion, as returned by the launch
+T3=$(date +%s)   # consolidation finished and the report written
+T4=$(date +%s)   # report delivered to the user, or posted to the PR
+```
+
+Two facts that make the numbers mean something:
+
+- **The legs run in parallel, so their laps overlap.** `reviewer_ms + oracle_ms` will exceed the
+  legs phase, and that is correct, not a bug. Report the legs phase as the **longer** of the two.
+- **Only `total` is a duration a human experiences.** Preflight and assembly are the parts you
+  control; the legs are the parts the model controls. If total grows, check which one before
+  reaching for anything else.
+
+Never block or re-run a step to tidy up a measurement. A missing stamp is recorded as `null`,
+not guessed.
+
+### 9.6. Append the review record
 
 One line per review, appended to the durable log — this is the only artefact that outlives the run,
 and the only way a recurring finding can ever be spotted. The RAM-disk report is deliberately
@@ -389,16 +417,28 @@ printf '%s\n' "$(jq -nc \
   --arg verdict "<approve|request-changes|not-posted>" \
   --argjson legs '{"reviewer":"<ok|died|timeout>","oracle":"<ok|died|timeout>"}' \
   --argjson counts '{"blocker":N,"warning":N,"minor":N}' \
-  --argjson labels '["<label>","<label>"]' \
-  '{date:$date,repo:$repo,pr:$pr,sha:$sha,verdict:$verdict,legs:$legs,counts:$counts,labels:$labels}')" >> "$REVIEW_LOG"
+  --argjson labels '["<label>"]' \
+  --argjson timing '{"t0":T0,"preflight_ms":(T1-T0)*1000,"legs_ms":(MAX_LEG-END)*1000,"assembly_ms":(T3-T2)*1000,"delivery_ms":(T4-T3)*1000,"total_ms":(T4-T0)*1000}' \
+  '{date:$date,repo:$repo,pr:$pr,sha:$sha,verdict:$verdict,legs:$legs,counts:$counts,labels:$labels,timing:$timing}')" >> "$REVIEW_LOG"
 ```
 
 - `labels` is the de-duplicated set of labels from `standards.md` that this review actually raised.
   A fixed vocabulary makes recurrence a `GROUP BY`, not a text search:
   `jq -r .labels[] "$REVIEW_LOG" | sort | uniq -c | sort -rn`.
+- `timing.legs_ms` is the **longer** leg, not the sum — the legs overlap.
 - Write the line **even when the review is not posted** (user declined, or a leg died): a killed
   review is exactly the evidence needed for "this keeps happening".
-- Never write findings prose here. The line records what kind and how much, never what was said.
+- Never write findings prose here. The line records what kind, how much and how long — never what
+  was said.
+
+Then answer timing questions from the log rather than from memory:
+
+```bash
+jq -s '{n:length,
+        median_total: ([.[].timing.total_ms]|sort|.[length/2|floor]/60000),
+        median_legs:  ([.[].timing.legs_ms] |sort|.[length/2|floor]/60000),
+        median_assembly: ([.[].timing.assembly_ms]|sort|.[length/2|floor]/60000)}' "$REVIEW_LOG"
+```
 
 ### 10. Bucket every finding and recommend a disposition
 
