@@ -2,8 +2,8 @@
 name: creating-pull-requests
 description: Company pull request workflow and branch policy. Use when user says "create a PR", "make a pull request", "open a PR", or when managing GitHub pull requests for company projects.
 author: Mike Scott
-version: '1.0.0'
-updated: '2026-07-11'
+version: '1.1.4'
+updated: '2026-11-08'
 ---
 
 # Creating Pull Requests
@@ -58,6 +58,39 @@ NEVER PR into develop
 - Testing notes (what was tested, how)
 - Links to related ADRs if applicable
 
+## Comment voice and attribution
+
+### First, check which identity is acting
+
+Attribution depends on how the agent reaches GitHub, not on the tool it uses.
+
+| The agent acts as | Comments, PRs and issues appear as | This section |
+|---|---|---|
+| A **GitHub App** — a personal one, or the company one | the app, which is named so that it is obviously an agent and not a person | **does not apply**: attribution is already unambiguous, so write in whichever voice is clearest. Signing as the coding agent is optional. |
+| The **operator's own credentials** — `gh` logged in as them, or a personal access token | the operator personally | **applies**: follow the rules below |
+
+Check before writing, because it changes the rules: `gh auth status` reports the account the CLI will use. If it names the operator rather than an app, you are posting as the operator.
+
+### When the comment posts as the operator
+
+Comments and PR bodies then appear **under the operator's GitHub account**. A first-person sentence reads as the operator speaking, and an apology reads as the operator apologising for something the agent did.
+
+Neutral project voice is the default: write the record, not a personal note. "The base branch was wrong" is better than "I got the base wrong".
+
+If the agent does write in the first person, or names itself, it must do both of these:
+
+1. **Open with an attribution note**, for example:
+   ```markdown
+   ### **Note: me, I and mine in this comment refer to a coding agent, not to me**
+   ```
+2. **Sign the comment `coding agent`.** The words carry the meaning: a bare name could pass for a person. Add the agent's name if it has one — `Jarvis, coding agent` — but `coding agent` alone is enough.
+
+Rules that hold either way:
+
+- **Never attribute a fault to the operator that the agent caused.** Name the agent when the sentence is about its mistake: "the agent opened this against `develop`".
+- **First person for the operator's own decisions is fine**, and still worth phrasing neutrally where practical.
+- **A closed PR gets a comment saying why**, so nobody reconstructs the reason later. The same holds for a closed issue.
+
 ## Common Mistakes - Anti-Patterns
 
 | Mistake | Why it's wrong | Correct approach |
@@ -65,3 +98,5 @@ NEVER PR into develop
 | PR from `develop` → `master` | May include unfinished/abandoned work | PR from clean feature branch |
 | PR into `develop` | Adds unnecessary process to a sandbox | Merge directly into `develop` |
 | Including multiple features in one PR | Hard to review, hard to roll back | One feature per PR |
+| Closing a PR without a comment | The reason is lost, and it looks arbitrary later | Comment why, and where the work went instead |
+| First-person comment posting as the operator, with no attribution | Reads as the operator confessing the agent's mistake | Neutral voice, or an attribution note and a `coding agent` signature. Not needed when posting as a GitHub App |
