@@ -1,6 +1,6 @@
 ---
 name: pr-review
-description: Review a GitHub pull request by orchestrating reviewer + oracle sub-agents directly from the orchestrating session, consolidating their findings into a single report, and asking for approval before posting. Use when user says "review PR #N", "review pull request", "review this PR", "review N on owner/repo", provides a PR URL, or asks for a PR review.
+description: Review a GitHub pull request by orchestrating reviewer + oracle sub-agents directly from the orchestrating session, consolidating their findings into a single report, and asking for approval before posting. Interactive by default; set PR_REVIEW_MODE=post to post the review as a plain comment without asking, for headless dispatch. Use when user says "review PR #N", "review pull request", "review this PR", "review N on owner/repo", provides a PR URL, or asks for a PR review.
 ---
 
 # PR Review
@@ -13,8 +13,32 @@ You are the orchestrator of the PR review. You run the `reviewer` and `oracle` s
 
 Review artifacts (context file, report) must live in a RAM disk, not in the project directory. The correct location is `${XDG_RUNTIME_DIR}/pr-review/$number/` where `XDG_RUNTIME_DIR` is the user-specific runtime directory (typically `/run/user/$(id -u)`). Check it with `echo $XDG_RUNTIME_DIR` — it defaults to `/run/user/1000` on most Linux systems. Do NOT create review artifacts inside the project worktree — it pollutes the working tree and risks them being committed.
 
-## Workflow
+## Mode: present or post
 
+The skill runs in one of two modes, chosen by the caller:
+
+| Mode | Set by | Behaviour |
+|---|---|---|
+| `present` (default) | nothing | Review, present the report, wait, then post it as an approval or a request for changes |
+| `post` | `PR_REVIEW_MODE=post` | Review, then post the report as a **plain PR comment** without asking. No inline fixes, no commits, no pushes, no issues, no approval, no change request |
+
+Read the mode, do not infer it — it is one command, and the default leaves interactive use exactly as it was:
+
+```bash
+MODE="${PR_REVIEW_MODE:-present}"
+case "$MODE" in
+  present|post) ;;
+  *) echo "unknown PR_REVIEW_MODE='$MODE' (expected present or post)" >&2; exit 2 ;;
+esac
+```
+
+**Why the gate exists, and why `post` removes it.** Present mode exists so a human can read the report and interact — fix a finding, ask a question, revise the wording — before it goes public. A dispatcher has no such human, so the gate becomes a stall: the only answer it could ever give is "post it". `post` states that answer in advance, and changes nothing else about the review itself.
+
+**`post` mode is advisory by design.** It never edits, commits or pushes, so it needs no write access to code, and a comment it posts can be withdrawn or edited. That is what makes it safe to run unattended over a queue: the worst a mistaken or manipulated review can do is leave a wrong comment on a pull request. It also means every finding stays the author's to fix — the review recommends, it never acts.
+
+The variable belongs to the caller. This skill defines the two values and no others, and names nothing about who is calling it.
+
+## Workflow
 ### 0. Open the split-time log
 
 Split times are captured **as each phase ends**, never reconstructed afterwards. A bash call is its
@@ -480,12 +504,14 @@ printf '%s\n' "$(jq -nc \
   --arg repo "<owner/repo>" \
   --argjson pr <number> \
   --arg sha "$PR_HEAD_SHA" \
-  --arg verdict "<approve|request-changes|not-posted>" \
+  --arg verdict "<approve|request-changes|commented|not-posted>" \
   --argjson legs '{"reviewer":"<ok|died|timeout>","oracle":"<ok|died|timeout>"}' \
   --argjson counts '{"blocker":N,"warning":N,"minor":N}' \
   --argjson labels '["<label>"]' \
+  --arg mode "$MODE" \
+  --arg comment_url "${COMMENT_URL:-}" \
   --argjson timing "$TIMING" \
-  '{date:$date,repo:$repo,pr:$pr,sha:$sha,verdict:$verdict,legs:$legs,counts:$counts,labels:$labels,timing:$timing}')" >> "$REVIEW_LOG"
+  '{date:$date,repo:$repo,pr:$pr,sha:$sha,verdict:$verdict,mode:$mode,comment_url:$comment_url,legs:$legs,counts:$counts,labels:$labels,timing:$timing}')" >> "$REVIEW_LOG"
 ```
 
 - `labels` is the de-duplicated set of labels from `standards.md` that this review actually raised.
@@ -536,7 +562,7 @@ Lead with the recommended disposition — `Inline fix: 7 (~2h) · Issue: 3 · De
 
 An inline fix is still a change, so it is committed and pushed like any other (step 11).
 
-**Present the report (step 12) with the disposition and a note like:**
+**In `present` mode**, present the report (step 12) with the disposition and a note like:
 
 > Recommended disposition: Inline fix: [N] (~[effort]) · Issue: [M] · Decision: [K]. Want me to fix the inline group now?
 
@@ -544,7 +570,11 @@ Then:
 - **Operator accepts** → Fix the inline findings, commit each, proceed to step 11, then propose the issues for approval (step 14).
 - **Operator overrides** → Apply the overrides; leave everything not authorised for the author.
 
+**In `post` mode**, there is nobody to authorise anything, so the buckets are structure for the comment and nothing more. State the disposition line as a recommendation — `Recommended disposition: Inline fix: 7 (~2h) · Issue: 3 · Decision: 0` — and never ask. Fixing is off the table (see Mode), so the line reads as advice to the author, not as a question.
+
 ### 11. Run quality pipeline on your changes (only if inline fixes were applied)
+
+**`post` mode never fixes anything, so this step and step 11.5 are skipped entirely.** There are no changes of its own to pipeline, no commits to push, and no red-first ordering to honour — the review reports and stops. Reading them is still worth it: they are the standard the comment asks the author to meet.
 
 After any inline fixes are committed, run the pipeline again to catch auto-fixes your changes introduced:
 
@@ -599,6 +629,8 @@ When a test is genuinely impractical, the fix still ships and the reason is reco
 
 ### 12. Present for approval
 
+**In `post` mode there is no approval gate.** Do the thread re-read and the report write below — both exist for correctness, not for the gate — then go straight to step 13. Do not ask "post it?", do not wait, and do not treat the absence of an answer as a reason to stop.
+
 **Re-read the discussion thread before presenting.** The review ran for 45–90 minutes, so the author may have replied while it did — re-run the `issues/<number>/comments` read from step 3 and compare the timestamps with the context file. If a reply has answered an outstanding question or corrected a point, close or amend that finding in the report before presenting it. A review that arrives asking about something already answered on the PR spends the author's time and shows the conversation was never opened.
 
 **Write the full report contents as your actual response text** — copy the Markdown directly into what you say to the user. Do NOT summarize it. Do NOT just read it into a tool output block and describe it. The user reads the report inline.
@@ -627,7 +659,9 @@ If there is a mismatch, fix the report body first, then post.
 
 **A request for changes asks for the tests alongside the fixes it asks for in production code.** Section 7 names each test, its file and its assertion, and step 11.5 fixes the order; say in the review body that the test for a production-code finding comes with the fix, and that a fix landing without one leaves the suite as blind as it was. Prose-only findings need no test — do not pad the review with synthetic ones. Lead the requested-changes section with the tests, then the code changes.
 
-Determine the review state from the report's Bottom line, then post:
+Determine the review state from the report's Bottom line, then post.
+
+**`present` mode** — a human has read it and said post, so the verdict is theirs too:
 
 ```bash
 if grep -q '🟢 \*\*APPROVE\*\*' "$REPORT_FILE"; then
@@ -638,7 +672,39 @@ fi
 gh pr review <number> --repo <owner/repo> $REVIEW_STATE --body-file "$REPORT_FILE"
 ```
 
+**`post` mode** — a comment, never `--approve` and never `--request-changes`. An automated first pass has not earned a verdict on someone's merge, and a review that blocks a merge with nobody standing behind it is worse than a comment the author can read and judge:
+
+```bash
+MARKER="<!-- pr-review:${PR_HEAD_SHA} -->"
+COMMENT_FILE="$RUN_DIR/comment.md"
+{
+  printf '%s\n\n' '**Automated review — not a final review.** This is an automated first pass, posted while no reviewer was available to read it beforehand. It is a comment: it is not an approval and not a request for changes, and it neither blocks nor unblocks the merge. Expect a human follow-up; treat the findings as a starting point.'
+  cat "$REPORT_FILE"
+  printf '\n%s\n' "$MARKER"
+} > "$COMMENT_FILE"
+
+# One comment per head SHA: a re-review of the same commit edits what is already
+# there rather than adding a second.
+EXISTING_ID=$(gh api "repos/<owner/repo>/issues/<number>/comments" --paginate \
+  | jq -r --arg m "$MARKER" '.[] | select(.body | contains($m)) | .id' | tail -1)
+
+if [ -n "$EXISTING_ID" ]; then
+  jq -n --rawfile body "$COMMENT_FILE" '{body:$body}' \
+    | gh api -X PATCH "repos/<owner/repo>/issues/comments/$EXISTING_ID" --input - --jq .html_url
+else
+  gh pr comment <number> --repo <owner/repo> --body-file "$COMMENT_FILE"
+fi
+```
+
+Hold the URL it prints as `COMMENT_URL` for the record (step 9.6). **If the post fails, fail the run out loud** — a review that reviewed and did not post is a failed run, not a quiet one, and a dispatcher told it succeeded on one will never notice.
+
+**The traffic light stays, and gains one honesty clause.** The report's Bottom line keeps its 🟢/🟡/🔴 verdict. In `post` mode the comment must also say plainly, in its first line after the banner, when the review is **partial** — a leg that died or timed out, a baseline that could not run, a suite that was absent. "One leg did not complete; these are the reviewer's findings alone" is the sentence. A clean verdict over a dead oracle is the one thing this mode must never publish.
+
+**Sanitisation matters more here, not less.** In `present` mode a human reading the report is the last check on leaked paths, credentials, internal hostnames and half-finished reasoning. With that check removed, step 8 is load-bearing: no local paths, no artefact paths, no harness or session detail, no credentials, nothing about the machine it ran on.
+
 ### 14. Offer to escalate outstanding findings to GitHub issues
+
+**Skip this step entirely in `post` mode.** Creating issues needs an explicit yes and there is nobody to give one, so unfixed findings are named in the comment as follow-ups for the author or the operator to raise.
 
 Propose a GitHub issue for every finding left unfixed once the disposition is settled — whether the review is posted as an approval or as a request for changes — so nothing is lost between rounds. This is the Issue bucket from step 10, presented with a proposed title and assignee: **the PR author by default**, and the operator for administrative or data tasks that need their access. Group only what shares a subsystem or fix class; keep self-contained fixes as their own issue. Check `gh issue list` for duplicates first, present the proposed list, and wait for an explicit yes — never create issues unprompted. Skip documentation-only items and anything another issue tracks.
 
