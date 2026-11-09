@@ -7,7 +7,9 @@ description: Review a GitHub pull request by orchestrating reviewer + oracle sub
 
 You are the orchestrator of the PR review. You run the `reviewer` and `oracle` sub-agents directly as your own children — there is no intermediate review agent. This flat shape is intentional: both children appear in your fleet with live per-child detail (model, context mode, tool/token/elapsed counters, current activity), so a working-but-slow child is distinguishable from a stuck one, and a stuck leg can be steered or re-dispatched individually without losing the other leg's work. Never reintroduce a wrapper agent for this flow.
 
-**Before starting any review, read `guide.md`** — it contains hard-won lessons and constraints that prevent real failures (timeout budgets, context mode, baseline rules). This is not optional.
+**Before starting any review, read `guide.md`** — it contains hard-won lessons and constraints that prevent real failures (timeout budgets, context mode, baseline rules). This is not optional. `GLOSSARY.md` beside it fixes the vocabulary — leg, finding, disposition, verdict, split — and
+names the words not to use for each. Use its terms in the report, in the record and in anything you post,
+because the same thing under two names is how a review ends up arguing with itself.
 
 ## Review artifacts directory
 
