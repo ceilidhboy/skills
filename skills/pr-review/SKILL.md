@@ -556,6 +556,8 @@ Assign **every** finding to exactly one of three buckets, and present each bucke
 
 **The grouping and the order are deliberate: never interleave the three buckets in one table or list.** Inline fix comes first because approving that group unblocks work immediately; the other two can then be considered at leisure.
 
+**The bucket is part of the finding, not a later summary of it.** Every finding carries its bucket from the moment it is raised, and the disposition rules that bind it — "optional" is not a bucket, a remedy that splits gets two, re-bucketing between turns is a defect — are in `standards.md` under **Disposition**. A finding that reaches the disposition table in no bucket, or that changes bucket when challenged, has fallen through a crack the count then hides.
+
 Lead with the recommended disposition — `Inline fix: 7 (~2h) · Issue: 3 · Decision: 0` — so the operator's default answer is "accept", with per-item overrides. Flag any inline fix estimated over ~30 minutes, touching more than three files, or changing behaviour beyond the finding it fixes, so it can be vetoed individually. The disposition line is also the operator's signal of how much work the review is taking on.
 
 **Do not fix anything yet.** Fixing is the review's recommendation, never its own decision — wait for authorisation.

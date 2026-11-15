@@ -49,3 +49,33 @@ countable later: twelve reviews with `debug-logging` is one missing lint rule, n
 Adding a label is a change to this file and is reviewed like code. Do not invent one at report
 time: pick the nearest, and say in the finding if none fits — an unmatched finding is a signal that
 the vocabulary needs extending, which is itself worth knowing.
+
+## Disposition
+
+Every finding carries exactly one bucket **at the point it is raised**, not once the fixes have been
+agreed: `Inline fix`, `Issue`, or `Decision`. The bucket is part of the finding, like its severity
+and its label.
+
+| Bucket | Use for |
+|---|---|
+| `Inline fix` | anything the review can correct itself: prose, a comment, a name, a missing test, a behaviour change pinnable with a red-first test, a small refactor |
+| `Issue` | work that must not be fixed in this PR — out of scope, cross-cutting, or needing its own scheduling |
+| `Decision` | a remedy that needs a choice only a human owns — product behaviour, a trade-off between defensible options, a deploy or production-data call |
+
+**"Optional" is not a bucket.** A finding described as optional, "worth saying", "flagging because",
+or "if you want it" still gets one of the three. An open ❔ with no bucket is a finding already
+falling through a crack: it reads as a dropped item to whoever has to act on it, and it will be
+re-raised as new work a round later.
+
+**A remedy that splits gets both buckets.** When one part of the fix needs no decision — making a
+map exhaustive, writing the explicit case, pinning the behaviour that exists — and another part
+does (which colour, which policy, which wording), the finding is an `Inline fix` **and** an `Issue`
+or `Decision`. Neither part subsumes the other, and the part that needs no decision is never grounds
+for leaving the part that does unrecorded.
+
+**Re-bucketing between turns is a review defect.** A finding that was an `Inline fix` in the
+disposition table and becomes a `Decision` when challenged — or the reverse — was misclassified the
+first time. Correct it explicitly, say which reading was wrong, and restate the counts; do not
+quietly move the item and leave the earlier figure standing.
+
+This section is a change to this file and is reviewed like code.
