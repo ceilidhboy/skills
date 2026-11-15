@@ -18,6 +18,11 @@
 #                  bash call is its own shell; and the three artefact paths agree
 #   consistency  - no block creates a worktree or installs a package, and the artefacts keep the four
 #                  keys a caller reads
+#   pipeline     - the `fix` script is required: a project without one stops the review with exit 3
+#                  and `assertion: pipeline` in preflight.json, and the individual scripts are never
+#                  a fallback; post mode discards every formatter rewrite and reports the drift in
+#                  formatting.json, while present mode keeps it, stages only what was rewritten, and
+#                  pushes
 #   harness      - a placeholder that survives a fill stops the suite by name, rather than surfacing
 #                  later as a path mismatch or a directory called `<number>`
 #
@@ -81,6 +86,7 @@ fill() {
             -e "s|^HEAD_SHA='<PR_HEAD_SHA>'|HEAD_SHA='$sha'|" \
             -e "s|^PR_HEAD='<PR_HEAD>'|PR_HEAD='$branch'|" \
             -e "s|^PR_HEAD_SHA='<PR_HEAD_SHA>'|PR_HEAD_SHA='$sha'|" \
+            -e "s|^CURRENT_BRANCH='<PR_HEAD>'|CURRENT_BRANCH='$branch'|" \
             -e "s|^PR=<number>|PR=7|" \
             -e 's|<owner>-<repo>|Owner-Repo|g' \
             -e 's|<number>|7|g' \
@@ -301,6 +307,290 @@ ck vendor_still_absent "$([ -d "$FX/wt/vendor" ] && echo present || echo absent)
 ck no_worktree_add "$(grep -cE 'git +worktree +add' <<<"$PREFLIGHT")" 0
 ck no_install_commands "$(grep -cE '\b(composer|bun|npm|pnpm|yarn) +(install|add|ci)\b' <<<"$PREFLIGHT")" 0
 rm -rf "$RT/pr-review"
+
+echo
+echo "== pipeline: composer fix is required, and a project without it stops the review"
+RT5="$WORK/rt5"; mkdir -p "$RT5"
+
+# A stand-in for composer: it runs the named script's commands from the fixture's own composer.json,
+# expanding `@script` references the way composer does, so the fixture — not the fake — decides what
+# a run does.
+PBIN="$WORK/pbin"; mkdir -p "$PBIN"
+cat > "$PBIN/composer" <<'FAKE'
+#!/bin/sh
+[ "$1" = "run-script" ] || { echo "fake composer: unsupported: $*" >&2; exit 9; }
+expand() {
+  jq -r --arg s "$1" '.scripts[$s] // empty | if type=="array" then .[] else . end' composer.json |
+  while IFS= read -r line; do
+    case "$line" in
+      @*) expand "${line#@}" ;;
+      *)  sh -c "$line" ;;
+    esac
+  done
+}
+expand "$2"
+FAKE
+# A stand-in for Pint: rewrites app/Styled.php in place, once, the way a fix-mode formatter does.
+cat > "$PBIN/pint" <<'FAKE'
+#!/bin/sh
+[ -f app/Styled.php ] || exit 0
+grep -q '// formatted' app/Styled.php && exit 0
+printf '// formatted\n' >> app/Styled.php
+FAKE
+# A stand-in for a script that regenerates a tracked file: it is not a formatter, so its changes are
+# discarded like any other and claimed as nothing.
+cat > "$PBIN/regen" <<'FAKE'
+#!/bin/sh
+grep -q '// regenerated' app/Styled.php && exit 0
+printf '// regenerated\n' >> app/Styled.php
+FAKE
+chmod +x "$PBIN/composer" "$PBIN/pint" "$PBIN/regen"
+
+RESOLVE=$(block '^#### Resolve the pipeline' 1)
+RUNLIVE=$(block '^#### Present mode: run it' 1)
+STAGE=$(block '^#### Stage, commit and push' 1)
+RUNPOST=$(block '^#### Post mode: run it' 1)
+for pair in "resolve:$RESOLVE" "present run:$RUNLIVE" "stage:$STAGE" "post run:$RUNPOST"; do
+  name=${pair%%:*}; body=${pair#*:}
+  [ -n "$body" ] || { echo "cannot extract the $name block from $SKILL" >&2; exit 2; }
+done
+
+pipeline_fixture() { # dir composer.json — a worktree whose project declares those scripts
+  local d="$1"
+  fixture "$d"
+  git -C "$d/wt" config user.email test@example.com
+  git -C "$d/wt" config user.name Test
+  mkdir -p "$d/wt/app"; printf '<?php\n' > "$d/wt/app/Styled.php"
+  printf '%s\n' "$2" > "$d/wt/composer.json"
+  git -C "$d/wt" add -A; git -C "$d/wt" commit -qm declares
+}
+
+fmt_artefact() { printf '%s/pr-review/Owner-Repo/7/formatting.json' "$1"; }
+flight_artefact() { printf '%s/pr-review/Owner-Repo/7/preflight.json' "$1"; }
+
+# resolved <fixture> [mode] -> the resolved pipeline (one `command<TAB>formatters` line), leaving the
+# block's own exit status in $WORK/resolve.rc and its output in $WORK/resolve.out
+resolved() {
+  rm -rf "$RT5/pr-review"
+  fill "$RESOLVE" Owner/Repo feat/x "$(head_sha "$1")" > "$WORK/resolve.sh"
+  ( cd "$1/wt" && XDG_RUNTIME_DIR="$RT5" PR_REVIEW_MODE="${2:-present}" bash "$WORK/resolve.sh" ) \
+    > "$WORK/resolve.out" 2>&1
+  echo $? > "$WORK/resolve.rc"
+  cat "$RT5/pr-review/Owner-Repo/7/pipeline.tsv" 2>/dev/null
+}
+commands_of() { cut -f1 <<<"$1" | paste -sd'|' - ; }
+formatters_of_tab() { cut -f2 <<<"$1" | paste -sd'|' - ; }
+
+FX="$WORK/pipe-fix"
+pipeline_fixture "$FX" '{"scripts":{"pint":["pint"],"fix":["@pint"],"lint":["pint"]}}'
+P=$(resolved "$FX")
+ck fix_used "$(commands_of "$P")" "composer run-script fix"
+ck fix_alone "$(grep -c . <<<"$P")" 1
+ck fix_formatters "$(cut -f2 <<<"$P")" "pint"
+ck fix_exit "$(cat "$WORK/resolve.rc")" 0
+ck fix_announced "$(grep -c 'pipeline: composer run-script fix' "$WORK/resolve.out")" 1
+
+# The individual scripts are not a fallback. A project that exposes lint, ci:check and types:check but
+# no fix is refused, and in post mode the refusal is a preflight artefact naming the missing script —
+# the same channel every other "this review cannot start" failure uses.
+FX="$WORK/pipe-nofix"
+pipeline_fixture "$FX" '{"scripts":{"pint":["pint"],"lint":["pint"],"ci:check":["true"],"types:check":["true"]}}'
+P=$(resolved "$FX" post)
+ck nofix_exit "$(cat "$WORK/resolve.rc")" 3
+ck nofix_nothing_resolved "$(grep -c . <<<"$P")" 0
+ck nofix_says_stop "$(grep -c 'HARD STOP' "$WORK/resolve.out")" 1
+ck nofix_names_declared "$(grep -c 'found: ci:check, lint, pint, types:check' "$WORK/resolve.out")" 1
+ck nofix_no_improvisation "$(grep -c 'will not assemble one' "$WORK/resolve.out")" 1
+ck nofix_assertion "$(field "$(flight_artefact "$RT5")" assertion)" pipeline
+ck nofix_expected "$(field "$(flight_artefact "$RT5")" expected)" \
+  "a composer.json script named fix, running the project code quality pipeline"
+ck nofix_actual "$(field "$(flight_artefact "$RT5")" actual)" "ci:check, lint, pint, types:check"
+ck nofix_head "$(field "$(flight_artefact "$RT5")" head_sha)" "$(head_sha "$FX")"
+ck nofix_artefact_mode "$(stat -c %a "$(flight_artefact "$RT5")")" 600
+
+# Present mode stops with the message and writes no file: a human is reading, exactly as preflight
+# does when an assertion fails there.
+P=$(resolved "$FX" present)
+ck nofix_present_exit "$(cat "$WORK/resolve.rc")" 3
+ck nofix_present_no_artefact \
+  "$([ -f "$(flight_artefact "$RT5")" ] && echo present || echo absent)" absent
+
+# No composer.json at all is the same failure with a different sentence, not a different outcome.
+FX="$WORK/pipe-nocomposer"; fixture "$FX"
+git -C "$FX/wt" config user.email test@example.com
+git -C "$FX/wt" config user.name Test
+git -C "$FX/wt" rm -q composer.json && git -C "$FX/wt" commit -qm drop
+P=$(resolved "$FX" post)
+ck nocomposer_exit "$(cat "$WORK/resolve.rc")" 3
+ck nocomposer_nothing_resolved "$(grep -c . <<<"$P")" 0
+ck nocomposer_names_it "$(grep -c "no composer.json in $FX/wt" "$WORK/resolve.out")" 1
+ck nocomposer_actual "$(field "$(flight_artefact "$RT5")" actual)" "no composer.json in $FX/wt"
+
+FX="$WORK/pipe-bun"
+pipeline_fixture "$FX" '{"scripts":{"fix":["bun run lint"]}}'
+printf '{"scripts":{"lint":"biome check --write ."}}\n' > "$FX/wt/package.json"
+git -C "$FX/wt" add -A && git -C "$FX/wt" commit -qm pkg
+ck formatter_through_package_json "$(cut -f2 <<<"$(resolved "$FX")")" "biome"
+
+# post_run <fixture> [mode] -> the block's exit status; output in $WORK/postrun.out
+post_run() {
+  fill "$RUNPOST" > "$WORK/postrun.sh"
+  ( cd "$1/wt" && env PATH="$PBIN:$PATH" XDG_RUNTIME_DIR="$RT5" PR_REVIEW_MODE="${2:-post}" \
+      bash "$WORK/postrun.sh" ) > "$WORK/postrun.out" 2>&1
+}
+
+echo
+echo "== pipeline: post mode discards the rewrites and reports the drift"
+FX="$WORK/post-drift"; pipeline_fixture "$FX" '{"scripts":{"pint":["pint"],"fix":["@pint"]}}'
+resolved "$FX" > /dev/null
+before_head=$(git -C "$FX/wt" rev-parse HEAD)
+post_run "$FX"; rc=$?
+FMT=$(fmt_artefact "$RT5")
+ck drift_exit "$rc" 0
+ck drift_tree_clean "$(git -C "$FX/wt" status --porcelain)" ""
+ck drift_head_unchanged "$(git -C "$FX/wt" rev-parse HEAD)" "$before_head"
+ck drift_content_identical "$(git -C "$FX/wt" show HEAD:app/Styled.php | cmp -s - "$FX/wt/app/Styled.php" && echo same || echo changed)" same
+ck drift_files "$(field "$FMT" files)" 1
+ck drift_formatters "$(jq -rc .formatters "$FMT")" '["pint"]'
+ck drift_paths "$(jq -rc .paths "$FMT")" '["app/Styled.php"]'
+ck drift_exit_status "$(jq -rc '[.runs[].exit]' "$FMT")" "[0]"
+ck drift_mode "$(stat -c %a "$FMT")" 600
+ck drift_announced "$(grep -c 'formatting: 1 file(s) would be rewritten by pint' "$WORK/postrun.out")" 1
+
+FX="$WORK/post-clean"; pipeline_fixture "$FX" '{"scripts":{"fix":["true"]}}'
+resolved "$FX" > /dev/null
+post_run "$FX"; rc=$?
+ck clean_exit "$rc" 0
+ck clean_tree "$(git -C "$FX/wt" status --porcelain)" ""
+ck clean_no_drift "$(field "$(fmt_artefact "$RT5")" files)" 0
+ck clean_says_so "$(grep -c 'no `formatting` finding' "$WORK/postrun.out")" 1
+
+# A run that creates a file rather than rewriting one is not drift: a formatter rewrites tracked
+# files, and a build makes new ones. The new file is left in place and named, so a claim about a
+# byte-identical tree is a claim about the tracked tree and says so.
+FX="$WORK/post-untracked"
+pipeline_fixture "$FX" '{"scripts":{"fix":["touch newfile.txt"]}}'
+resolved "$FX" > /dev/null
+post_run "$FX"; rc=$?
+ck untracked_exit "$rc" 0
+ck untracked_not_drift "$(field "$(fmt_artefact "$RT5")" files)" 0
+ck untracked_left_in_place "$([ -f "$FX/wt/newfile.txt" ] && echo present || echo absent)" present
+ck untracked_announced "$(grep -c 'left untracked files' "$WORK/postrun.out")" 1
+
+# The count is files, not invocations: a `fix` script that runs Pint twice over one file reports one.
+FX="$WORK/post-twice"
+pipeline_fixture "$FX" '{"scripts":{"pint":["pint"],"fix":["@pint","@pint"]}}'
+resolved "$FX" > /dev/null
+post_run "$FX"; rc=$?
+ck counted_once_exit "$rc" 0
+ck counted_once_files "$(field "$(fmt_artefact "$RT5")" files)" 1
+ck counted_once_paths "$(jq -rc .paths "$(fmt_artefact "$RT5")")" '["app/Styled.php"]'
+ck counted_once_formatters "$(jq -rc .formatters "$(fmt_artefact "$RT5")")" '["pint"]'
+ck counted_once_runs "$(jq -rc '[.runs[].files]' "$(fmt_artefact "$RT5")")" "[1]"
+
+# A command that rewrites a tracked file without naming a formatter is discarded and named, but not
+# claimed as formatting drift: the label's meaning is a formatter's rewrite, and this is not one.
+FX="$WORK/post-non-formatter"
+pipeline_fixture "$FX" '{"scripts":{"fix":["regen"]}}'
+resolved "$FX" > /dev/null
+post_run "$FX"; rc=$?
+ck non_formatter_exit "$rc" 0
+ck non_formatter_not_drift "$(field "$(fmt_artefact "$RT5")" files)" 0
+ck non_formatter_no_formatters "$(jq -rc .formatters "$(fmt_artefact "$RT5")")" "[]"
+ck non_formatter_recorded "$(jq -rc '[.runs[].files]' "$(fmt_artefact "$RT5")")" "[1]"
+ck non_formatter_named "$(grep -c 'names no recognised formatter' "$WORK/postrun.out")" 1
+ck non_formatter_no_finding "$(grep -c 'no `formatting` finding' "$WORK/postrun.out")" 1
+
+# The guards. A tree that was dirty before the run is refused rather than measured, because nothing a
+# formatter rewrites could be told apart from what was already there; exit 4 says "nothing reviewed,
+# no preflight.json" where exit 3 would send a caller looking for one.
+FX="$WORK/post-dirty"; pipeline_fixture "$FX" '{"scripts":{"pint":["pint"],"fix":["@pint"]}}'
+resolved "$FX" > /dev/null
+printf 'stray\n' > "$FX/wt/app/Untracked.php"
+head_before=$(git -C "$FX/wt" rev-parse HEAD)
+post_run "$FX"; rc=$?
+ck dirty_refused_exit "$rc" 4
+ck dirty_refused_no_artefact \
+  "$([ -f "$(fmt_artefact "$RT5")" ] && echo present || echo absent)" absent
+ck dirty_refused_untouched "$(git -C "$FX/wt" show HEAD:app/Styled.php | cmp -s - "$FX/wt/app/Styled.php" && echo same || echo changed)" same
+ck dirty_refused_names_it "$(grep -c 'refused' "$WORK/postrun.out")" 1
+ck dirty_refused_head "$(git -C "$FX/wt" rev-parse HEAD)" "$head_before"
+
+# The block is post mode's alone: run in present mode it would discard the rewrites that mode has to
+# keep, and run in post mode the present block would push them to the PR.
+FX="$WORK/guard"; pipeline_fixture "$FX" '{"scripts":{"pint":["pint"],"fix":["@pint"]}}'
+resolved "$FX" > /dev/null
+post_run "$FX" present; rc=$?
+ck post_block_refuses_present "$rc" 2
+ck post_block_refused_nothing "$(git -C "$FX/wt" status --porcelain)" ""
+ck post_block_says_why "$(grep -c 'post-mode block' "$WORK/postrun.out")" 1
+fill "$RUNLIVE" > "$WORK/presentrun-guard.sh"
+( cd "$FX/wt" && env PATH="$PBIN:$PATH" XDG_RUNTIME_DIR="$RT5" PR_REVIEW_MODE=post \
+    bash "$WORK/presentrun-guard.sh" ) > "$WORK/presentrun-guard.out" 2>&1; rc=$?
+ck present_block_refuses_post "$rc" 2
+ck present_block_says_why "$(grep -c 'present-mode block' "$WORK/presentrun-guard.out")" 1
+
+# An unresolved pipeline is a usage error, not a review failure: exit 2, and no pipeline is invented.
+FX="$WORK/unresolved"; pipeline_fixture "$FX" '{"scripts":{"pint":["pint"],"fix":["@pint"]}}'
+resolved "$FX" > /dev/null
+: > "$RT5/pr-review/Owner-Repo/7/pipeline.tsv"     # resolved to nothing: the run must not become a no-op
+post_run "$FX"; rc=$?
+ck unresolved_post_exit "$rc" 2
+ck unresolved_post_says_why "$(grep -c 'missing or empty' "$WORK/postrun.out")" 1
+( cd "$FX/wt" && env PATH="$PBIN:$PATH" XDG_RUNTIME_DIR="$RT5" bash "$WORK/presentrun-guard.sh" ) \
+  > "$WORK/presentrun-guard.out" 2>&1; rc=$?
+ck unresolved_present_exit "$rc" 2
+
+echo
+echo "== pipeline: present mode keeps the rewrites, stages only those, and pushes"
+# A fixture whose origin is a real bare repository, so the push is genuinely exercised; and a local
+# edit the pipeline never touches, which must not be swept into the auto-fix commit.
+pushable_fixture() { # dir composer.json
+  local d="$1"
+  mkdir -p "$d"
+  git init -q --bare --initial-branch=master "$d/origin.git"
+  git init -q --initial-branch=master "$d/seed"
+  git -C "$d/seed" config user.email test@example.com
+  git -C "$d/seed" config user.name Test
+  printf 'vendor/\nnode_modules/\n' > "$d/seed/.gitignore"
+  mkdir -p "$d/seed/app"; printf '<?php\n' > "$d/seed/app/Styled.php"
+  printf 'keep\n' > "$d/seed/stray.txt"
+  printf '%s\n' "$2" > "$d/seed/composer.json"
+  git -C "$d/seed" add -A && git -C "$d/seed" commit -qm base
+  git -C "$d/seed" remote add origin "$d/origin.git"
+  git -C "$d/seed" push -q origin master
+  git -C "$d/seed" checkout -qb feat/x
+  printf 'branch work\n' >> "$d/seed/stray.txt"
+  git -C "$d/seed" add -A && git -C "$d/seed" commit -qm head
+  git -C "$d/seed" push -q origin feat/x
+  git clone -q "$d/origin.git" "$d/wt"
+  git -C "$d/wt" config user.email test@example.com
+  git -C "$d/wt" config user.name Test
+  git -C "$d/wt" checkout -q feat/x
+  mkdir -p "$d/wt/vendor" "$d/wt/node_modules"
+  printf '<?php\n' > "$d/wt/vendor/autoload.php"
+  printf 'local, unpushed edit\n' >> "$d/wt/stray.txt"
+}
+
+FX="$WORK/present"; pushable_fixture "$FX" '{"scripts":{"pint":["pint"],"fix":["@pint"]}}'
+resolved "$FX" > /dev/null
+fill "$RUNLIVE" > "$WORK/presentrun.sh"
+fill "$STAGE" > "$WORK/stage.sh"
+( cd "$FX/wt" && env PATH="$PBIN:$PATH" XDG_RUNTIME_DIR="$RT5" bash "$WORK/presentrun.sh" ) \
+  > "$WORK/presentrun.out" 2>&1; rc=$?
+ck present_exit "$rc" 0
+ck present_kept_rewrite "$(git -C "$FX/wt" diff --name-only -- app/Styled.php)" "app/Styled.php"
+ck present_names_scripts "$(grep -c 'composer run-script fix: exit 0' "$WORK/presentrun.out")" 1
+ck present_no_drift_artefact \
+  "$([ -f "$(fmt_artefact "$RT5")" ] && echo present || echo absent)" absent
+( cd "$FX/wt" && XDG_RUNTIME_DIR="$RT5" bash "$WORK/stage.sh" ) > "$WORK/stage.out" 2>&1; rc=$?
+ck stage_exit "$rc" 0
+ck stage_commit "$(git -C "$FX/wt" log -1 --format=%s)" "style: quality pipeline auto-fixes"
+ck stage_only_touched "$(git -C "$FX/wt" show --pretty=format: --name-only HEAD | grep -c .)" 1
+ck stage_only_touched_path "$(git -C "$FX/wt" show --pretty=format: --name-only HEAD | grep .)" \
+  "app/Styled.php"
+ck stage_stray_still_local "$(git -C "$FX/wt" status --porcelain stray.txt)" " M stray.txt"
+ck stage_pushed "$(git -C "$FX/wt" rev-parse HEAD)" "$(git -C "$FX/wt" rev-parse origin/feat/x)"
 
 echo
 echo "== merge probe: the head branch's ref is asserted before the merge"
