@@ -28,6 +28,13 @@ _Avoid_: second opinion, verifier, sanity check
 Everything before the legs launch: parsing, workspace, context and standards.
 _Avoid_: setup, warm-up, preamble, preparation
 
+**Preflight failure**:
+The file `preflight.json` written when an assertion about the workspace or the merge probe's ref fails
+in post mode, naming the assertion, what it expected, what it found and the head sha. It is how a
+caller learns that a review did not happen; the run exits non-zero immediately after writing it, and
+present mode — where a human is reading — stops with the message and writes no file.
+_Avoid_: error log, failure report, diagnostics, preflight error
+
 **Assembly**:
 Everything after both legs return: consolidation, reversal check, sanitisation, report.
 _Avoid_: synthesis, merge, post-processing, consolidation phase
