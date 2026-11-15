@@ -18,12 +18,14 @@
 #                  bash call is its own shell; and the three artefact paths agree
 #   consistency  - no block creates a worktree or installs a package, and the artefacts keep the four
 #                  keys a caller reads
+#   harness      - a placeholder that survives a fill stops the suite by name, rather than surfacing
+#                  later as a path mismatch or a directory called `<number>`
 #
 # Usage: scripts/test-preflight.sh        (exit 0 = all checks passed)
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-SKILL="$ROOT/skills/pr-review/SKILL.md"
+SKILL="${SKILL_UNDER_TEST:-$ROOT/skills/pr-review/SKILL.md}"
 [ -f "$SKILL" ] || { echo "cannot find $SKILL" >&2; exit 2; }
 
 WORK=$(mktemp -d); trap 'rm -rf "$WORK"' EXIT
@@ -64,17 +66,33 @@ printf '  0: %s lines, preflight: %s lines, 2a: %s lines\n' \
 
 # fill <block> [repo] [branch] [sha]  ->  the block with its placeholders filled in, which is what an
 # agent does by hand. Done here so the skill holds one copy of each block, not two.
+#
+# A `<…>` that survives the fill is a defect in this harness, not in the block under test: a
+# placeholder renamed or respaced in SKILL.md silently stops the sed below from matching, and the
+# suite then fails on a path mismatch or on a directory literally named `<number>` — pointing at the
+# artefact logic instead of at the drift between harness and skill. So the fill is checked, and the
+# check is fatal: `exit`, not `return`, because almost every caller redirects straight into a script
+# file and a subshell's failure would be swallowed. A block carrying a placeholder this function does
+# not know is substituted in the block before it is passed here.
 fill() {
-  local repo="${2:-Owner/Repo}" branch="${3:-feat/x}" sha="${4:-${HEAD_SHA:-deadbeef}}"
-  sed -e "s|^REPO='<owner/repo>'|REPO='$repo'|" \
-      -e "s|^HEAD_BRANCH='<PR_HEAD>'|HEAD_BRANCH='$branch'|" \
-      -e "s|^HEAD_SHA='<PR_HEAD_SHA>'|HEAD_SHA='$sha'|" \
-      -e "s|^PR_HEAD='<PR_HEAD>'|PR_HEAD='$branch'|" \
-      -e "s|^PR_HEAD_SHA='<PR_HEAD_SHA>'|PR_HEAD_SHA='$sha'|" \
-      -e "s|^PR=<number>|PR=7|" \
-      -e 's|<owner>-<repo>|Owner-Repo|g' \
-      -e 's|<number>|7|g' \
-      <<<"$1"
+  local repo="${2:-Owner/Repo}" branch="${3:-feat/x}" sha="${4:-${HEAD_SHA:-deadbeef}}" out left
+  out=$(sed -e "s|^REPO='<owner/repo>'|REPO='$repo'|" \
+            -e "s|^HEAD_BRANCH='<PR_HEAD>'|HEAD_BRANCH='$branch'|" \
+            -e "s|^HEAD_SHA='<PR_HEAD_SHA>'|HEAD_SHA='$sha'|" \
+            -e "s|^PR_HEAD='<PR_HEAD>'|PR_HEAD='$branch'|" \
+            -e "s|^PR_HEAD_SHA='<PR_HEAD_SHA>'|PR_HEAD_SHA='$sha'|" \
+            -e "s|^PR=<number>|PR=7|" \
+            -e 's|<owner>-<repo>|Owner-Repo|g' \
+            -e 's|<number>|7|g' \
+            <<<"$1")
+  left=$(grep -oE '<[A-Za-z][^>]*>' <<<"$out" | sort -u)
+  if [ -n "$left" ]; then
+    printf 'fill: placeholder(s) survived the fill — SKILL.md and this harness have drifted:\n' >&2
+    while IFS= read -r p; do printf '  %s\n' "$p" >&2; done <<<"$left"
+    printf 'Teach fill() the new spelling, or substitute it in the block before calling fill.\n' >&2
+    exit 1
+  fi
+  printf '%s\n' "$out"
 }
 
 # --------------------------------------------------------------------------------------------------
@@ -335,11 +353,13 @@ echo "== step 0: the artefact directory and the split log"
 STAMP=$(block '^### 0[.]' 2)
 [ -n "$STAMP" ] || { echo "cannot extract the step 0 stamp block" >&2; exit 2; }
 RT3="$WORK/rt3"; mkdir -p "$RT3"
-out=$( XDG_RUNTIME_DIR="$RT3" bash -c "$(fill "$STEP0")
+fill "$STEP0" > "$WORK/step0.sh"
+out=$( XDG_RUNTIME_DIR="$RT3" bash -c "$(cat "$WORK/step0.sh")
 printf '%s\n' \"\$REVIEW_DIR\"" )
 ck step0_review_dir "$out" "$RT3/pr-review/Owner-Repo/7"
 ck step0_dir_mode "$(stat -c %a "$RT3/pr-review/Owner-Repo/7")" 700
-out=$( XDG_RUNTIME_DIR="$RT3" bash -c "$(sed -e 's|<name>|t0|' <<<"$(fill "$STAMP")")
+fill "$(sed -e 's|<name>|t0|' <<<"$STAMP")" > "$WORK/stamp.sh"
+out=$( XDG_RUNTIME_DIR="$RT3" bash -c "$(cat "$WORK/stamp.sh")
 printf '%s\n' \"\$SPLITS\"" )
 ck step0_splits "$out" "$RT3/pr-review/Owner-Repo/7/splits.tsv"
 ck step0_stamped "$(cut -f1 "$out")" t0
@@ -353,7 +373,8 @@ echo "== step 9: the report is created owner-only"
 REPORT_BLOCK=$(block '^### 9[.] Write the report' 1)
 [ -n "$REPORT_BLOCK" ] || { echo "cannot extract the step 9 block" >&2; exit 2; }
 RT4="$WORK/rt4"; mkdir -p "$RT4"
-out=$( XDG_RUNTIME_DIR="$RT4" bash -c "$(fill "$REPORT_BLOCK")
+fill "$REPORT_BLOCK" > "$WORK/report.sh"
+out=$( XDG_RUNTIME_DIR="$RT4" bash -c "$(cat "$WORK/report.sh")
 printf '%s\n' \"\$REPORT_FILE\"" )
 ck report_path "$out" "$RT4/pr-review/Owner-Repo/7/report.md"
 ck report_exists "$([ -f "$out" ] && echo yes || echo no)" yes
@@ -400,6 +421,26 @@ for file in "$BLOCKS"/*.sh; do
   fi
 done
 ck no_leaked_variables "$leaks" ""
+
+echo
+echo "== harness: a placeholder that survives the fill stops the suite by name"
+# Rename one placeholder in a scratch copy of the skill and run this suite against it. The point is
+# the message: without the check this arrives as a path mismatch or a directory literally named
+# `<number>`, which sends the reader into the artefact logic instead of at the renamed placeholder.
+DRIFT_SKILL="$WORK/skill-drift.md"
+sed "s|HEAD_BRANCH='<PR_HEAD>'|HEAD_BRANCH='<PR_HEAD_RENAMED>'|" "$SKILL" > "$DRIFT_SKILL"
+ck drift_copy_differs "$(cmp -s "$SKILL" "$DRIFT_SKILL" && echo same || echo changed)" changed
+if [ "${PREFLIGHT_SKIP_DRIFT_CASE:-0}" = 1 ]; then
+  printf '  skip  the drift case (this run is the case itself)\n'
+else
+  SKILL_UNDER_TEST="$DRIFT_SKILL" PREFLIGHT_SKIP_DRIFT_CASE=1 bash "$0" > "$WORK/drift.out" 2>&1
+  rc=$?
+  ck drift_nonzero "$([ "$rc" -ne 0 ] && echo yes || echo no)" yes
+  ck drift_explains "$(grep -c 'placeholder(s) survived the fill' "$WORK/drift.out")" 1
+  ck drift_names_it "$(grep -c '^  <PR_HEAD_RENAMED>$' "$WORK/drift.out")" 1
+  ck drift_not_an_artefact_failure "$(grep -c 'FAIL ' "$WORK/drift.out")" 0
+  ck drift_not_a_pass "$(grep -c 'ALL CHECKS PASSED' "$WORK/drift.out")" 0
+fi
 
 echo
 if [ $FAILED -eq 0 ]; then echo "ALL CHECKS PASSED"; else echo "SOME CHECKS FAILED"; fi
