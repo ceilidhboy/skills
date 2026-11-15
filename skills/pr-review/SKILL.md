@@ -11,9 +11,13 @@ You are the orchestrator of the PR review. You run the `reviewer` and `oracle` s
 names the words not to use for each. Use its terms in the report, in the record and in anything you post,
 because the same thing under two names is how a review ends up arguing with itself.
 
-## Review artifacts directory
+## Review artefacts directory
 
-Review artifacts (context file, report) must live in a RAM disk, not in the project directory. The correct location is `${XDG_RUNTIME_DIR}/pr-review/$number/` where `XDG_RUNTIME_DIR` is the user-specific runtime directory (typically `/run/user/$(id -u)`). Check it with `echo $XDG_RUNTIME_DIR` — it defaults to `/run/user/1000` on most Linux systems. Do NOT create review artifacts inside the project worktree — it pollutes the working tree and risks them being committed.
+Review artefacts (context file, report, split log, preflight failure) must live in a RAM disk, not in the project directory, in one directory per repository per pull request:
+
+`${XDG_RUNTIME_DIR}/pr-review/<owner>-<repo>/<number>/`
+
+`XDG_RUNTIME_DIR` is the user-specific runtime directory (`/run/user/$(id -u)`, typically `/run/user/1000`) and it is **mandatory**: a run with it unset stops before doing anything else. There is no fallback, because a shared `/tmp/pr-review/` is readable by every local account and a report names a repository's vulnerabilities. For the same reason the directory is created mode 700 and the report is written mode 600. The owner and the repository name are joined by a hyphen (`Socially-Free-auto-pr-review`) so that the directory names one repository in one segment: splitting on `/` would put every repository of one owner under a shared parent, which is not a repository's directory and reads as one to anything that lists them. Do NOT create review artefacts inside the project worktree — it pollutes the working tree and risks them being committed.
 
 ## Mode: present or post
 
@@ -23,6 +27,12 @@ The skill runs in one of two modes, chosen by the caller:
 |---|---|---|
 | `present` (default) | nothing | Review, present the report, wait, then post it as an approval or a request for changes |
 | `post` | `PR_REVIEW_MODE=post` | Review, then post the report as a **plain PR comment** without asking. No inline fixes, no commits, no pushes, no issues, no approval, no change request |
+
+**In post mode the worktree arrives as the process's working directory and nothing else** — no
+variable but `PR_REVIEW_MODE` crosses the boundary, so there is no `--workdir` to get wrong and no
+second source of truth about which tree is being reviewed. Preflight asserts the directory instead,
+which is step 2's post-mode block: the caller provisioned the workspace, and preflight is what proves
+it arrived.
 
 Read the mode, do not infer it — it is one command, and the default leaves interactive use exactly as it was:
 
@@ -41,21 +51,34 @@ esac
 The variable belongs to the caller. This skill defines the two values and no others, and names nothing about who is calling it.
 
 ## Workflow
-### 0. Open the split-time log
+### 0. Resolve the artefact directory, then open the split-time log
 
-Split times are captured **as each phase ends**, never reconstructed afterwards. A bash call is its
-own shell, so a variable set in step 4 is gone by step 9 — the stamps therefore go into a file, one
-append per phase:
+Every artefact this run produces lives in one directory, and it is resolved first, before anything
+else can fail — a preflight failure has to be written somewhere, and that somewhere cannot depend on
+the step that failed. This is the **artefact-directory preamble**, and every later block that needs
+the directory repeats it verbatim, because a bash call is its own shell:
 
 ```bash
-SPLITS="${XDG_RUNTIME_DIR:-/tmp}/pr-review/<number>/splits.tsv"
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
 ```
 
-Each stamp is this command, with the name substituted; the file (and its directory) are created by
-the first append:
+Fill in `<owner>-<repo>` (owner and repository joined by a hyphen, `Socially-Free-auto-pr-review`) and
+`<number>` before running it, and the same two values in every later copy — a variable set here is gone
+by the next call, and a block that reads `$REVIEW_DIR` without setting it writes `/context.md`.
+
+Split times are captured **as each phase ends**, never reconstructed afterwards. They go into a file,
+one append per phase, and each append re-derives the path in its own call:
+
+Each stamp is this command, with the name substituted; it is a whole call, so it re-derives the path:
 
 ```bash
-mkdir -p "$(dirname "$SPLITS")" && printf '%s\t%s\n' <name> "$(date +%s%3N)" >> "$SPLITS"
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
+SPLITS="$REVIEW_DIR/splits.tsv"
+printf '%s\t%s\n' <name> "$(date +%s%3N)" >> "$SPLITS"
 ```
 
 | Stamp | Emit at | Means |
@@ -92,10 +115,15 @@ If the owner/repo cannot be determined from the task or the git remote, ask the 
 Fetch the PR's branches **before** any workspace decision. Step 2's "already on the PR branch" check compares the current branch against `headRefName`, so fetching it later makes that check impossible to evaluate — that ordering bug is why an already-checked-out PR branch gets missed.
 
 ```bash
-gh pr view <number> --repo <owner/repo> --json number,title,url,state,headRefName,baseRefName
+gh pr view <number> --repo <owner/repo> --json number,title,url,state,headRefName,baseRefName,headRefOid
 ```
 
-Hold `PR_HEAD`, `PR_BASE`, and `PR_TITLE` for the rest of the workflow. If `state` is not `OPEN`, say so and confirm the user still wants a review.
+Hold `PR_HEAD`, `PR_BASE`, `PR_TITLE` and `PR_HEAD_SHA` for the rest of the workflow. `PR_HEAD_SHA` is
+the head **this review was asked to review**: the sha the caller recorded when it named one — a queue
+claims an entry at a head, and that head is what the review is for — and `headRefOid` when it named
+none. Substituting the current tip for a recorded sha would review a commit nobody asked about, so a
+caller's sha is never silently upgraded. If `state` is not `OPEN`, say so and confirm the user still
+wants a review.
 
 **Now the target-branch gate. Do not skip it.**
 
@@ -112,6 +140,80 @@ Hold `PR_HEAD`, `PR_BASE`, and `PR_TITLE` for the rest of the workflow. If `stat
 Running this before the workspace questions means a mis-targeted PR is rejected without ever asking the user where to work.
 
 ### 2. Choose the review workspace (current directory first)
+
+#### Post mode asserts the workspace; it does not choose one
+
+In post mode the worktree arrived as the process's working directory, and the caller created it,
+checked the head out and installed its dependencies. There is nothing to ask, and nothing to infer
+from the path: the path-names-the-branch heuristic below encodes one operator's personal layout, and a
+caller's `wt/<number>` is not named for a branch at all. So post mode runs the six assertions below, in
+order, and goes straight to step 2a. Everything else in this section — Checks 1 to 3, the guard, the
+announcement — is present mode's.
+
+Each assertion is a fact about the tree the review is about to read, and each failure names what was
+wanted and what was found in `preflight.json`, so a wrong tree stops the run at the front instead of
+becoming forty minutes of findings about somebody else's branch. Exit status is 3 for a failed
+assertion and 2 for a missing `XDG_RUNTIME_DIR`.
+
+```bash
+# Fill in the four values resolved above, then run the block as one shell call.
+REPO='<owner/repo>'          # owner/name — compared as owner/name, whatever the URL looks like
+PR=<number>
+HEAD_BRANCH='<PR_HEAD>'      # the PR's head branch
+HEAD_SHA='<PR_HEAD_SHA>'     # the head this review was asked for, in full
+
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/$PR"
+mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
+ARTEFACT="$REVIEW_DIR/preflight.json"
+rm -f "$ARTEFACT"            # a stale failure is not this run's result
+
+fail() { # assertion expected actual
+  jq -nc --arg assertion "$1" --arg expected "$2" --arg actual "$3" --arg head_sha "$HEAD_SHA" \
+    '{assertion:$assertion,expected:$expected,actual:$actual,head_sha:$head_sha}' > "$ARTEFACT"
+  chmod 600 "$ARTEFACT"
+  printf 'preflight failed at %s: expected %s, actual %s\n' "$1" "$2" "$3" >&2
+  exit 3
+}
+
+# 1. the working directory is the worktree itself, not a directory somewhere inside a repository:
+#    the caller set the cwd to the tree, and every later assertion — and the pipeline — assumes the top
+TOP="$(git rev-parse --show-toplevel 2>/dev/null)"
+[ -n "$TOP" ] || fail worktree "the top of a git worktree" "$PWD is not in a repository"
+[ "$TOP" = "$(pwd -P)" ] || fail worktree "the top of the worktree, $PWD" "inside $TOP"
+
+# 2. origin is the repository under review, compared as owner/repo whatever form the URL takes
+ORIGIN="$(git remote get-url origin 2>/dev/null)"
+SLUG="$(printf '%s' "$ORIGIN" | sed -e 's#^[a-z][a-z+]*://[^/]*/##' -e 's#^[^@/]*@[^:]*:##' -e 's#/$##' -e 's#\.git$##')"
+[ "$(printf '%s' "$SLUG" | tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')" ] \
+  || fail remote "$REPO" "${ORIGIN:-no origin remote} -> ${SLUG:-nothing}"
+
+# 3. the branch, where the worktree is on one, is the PR's head branch. A detached worktree makes no
+#    branch claim — a caller checks the head out by sha — and assertion 4 is what pins it instead.
+ON="$(git branch --show-current)"
+[ -z "$ON" ] || [ "$ON" = "$HEAD_BRANCH" ] || fail branch "$HEAD_BRANCH" "on $ON"
+
+# 4. HEAD is the head the review was asked for, not the one an earlier run left behind
+AT="$(git rev-parse HEAD)"
+[ "$AT" = "$HEAD_SHA" ] || fail head_sha "$HEAD_SHA" "$AT"
+
+# 5. the working tree is clean, so every difference the review reports belongs to the PR
+DIRT="$(git status --porcelain)"
+[ -z "$DIRT" ] || fail clean "nothing modified, staged, untracked or deleted" "$DIRT"
+
+# 6. the dependencies are there. They are never installed here: provisioning is the caller's job
+MISSING=""
+[ -f composer.json ] && [ ! -f vendor/autoload.php ] && MISSING="vendor/autoload.php"
+[ -f package.json ] && [ ! -d node_modules ] && MISSING="${MISSING:+$MISSING, }node_modules/"
+[ -z "$MISSING" ] || fail dependencies "vendor/autoload.php and node_modules/ where the project declares them" "missing $MISSING"
+
+printf 'preflight ok: %s PR #%s, %s at %s, in %s — six assertions passed\n' \
+  "$REPO" "$PR" "${ON:-detached}" "$HEAD_SHA" "$PWD"
+```
+
+**Never create a worktree and never install a dependency.** Both are the caller's; a skill that
+provisions its own workspace can no longer be told which tree it reviewed. A missing `vendor/` is
+assertion 6 failing, not a build step to run.
 
 Check whether the current working directory is inside a git repo:
 
@@ -131,6 +233,7 @@ WORKTREE_PATH=""
 **On a match: set `WORKTREE_PATH="$TOPLEVEL"` and continue. Do not ask the user where to work, do not offer alternatives, do not create or switch anything.** Asking here is the exact failure this check exists to prevent. Then bring the branch up to date:
 
 ```bash
+CURRENT_BRANCH='<PR_HEAD>'   # a match means this directory holds the PR branch; its own shell, so name it
 git fetch origin "$CURRENT_BRANCH"
 BEHIND="$(git rev-list --count HEAD..origin/"$CURRENT_BRANCH" 2>/dev/null)"
 if [ "$BEHIND" != "0" ]; then
@@ -142,7 +245,7 @@ If the fast-forward fails, stop and ask the user rather than forcing anything.
 
 **Guard — dirty working tree.** Before doing any review work, verify the review directory is clean. Run `git status --porcelain` and stop if there is *any* output — modified tracked files, untracked files, new files, deleted files, or staged changes. Previous reviews, abandoned experiments, or other branches may have left debris. Report the full `git status --porcelain` output and ask the user whether to commit, stash, or discard everything before proceeding. Ignored build artifacts (see step 2b) do not count — they are expected. Do not review over a dirty tree; it produces false findings and makes it impossible to tell which changes belong to the PR.
 
-**Check 2 — Same repo, different branch.** The directory is the right repository but not the PR branch. **Compare the directory's path with the branch it is holding before deciding anything** — the user keeps one worktree per branch, named for it **in full** (`src/master`, `src/develop`, then one per ticket branch under whatever prefix that branch uses: `src/chore/<ticket>`, `src/feat/<ticket>`, `src/tickets/<ticket>`), so the name is an assertion about the contents and their navigation depends on it. Never parse the prefix — it is `chore/`, `fix/`, `bugfix/`, `hotfix/`, `docs/`, `refactor/`, or nothing at all, and it changes — so compare the whole path suffix against the whole branch name. Only the generic ones (`src/wip`, `src/review/wip`) change branch by design. That gives one test with no list of magic names to maintain: **does the directory's path name the branch it holds?**
+**Check 2 — Same repo, different branch. Present mode only** — post mode has already asserted and never asks, so a directory's name decides nothing there. The directory is the right repository but not the PR branch. **Compare the directory's path with the branch it is holding before deciding anything** — the user keeps one worktree per branch, named for it **in full** (`src/master`, `src/develop`, then one per ticket branch under whatever prefix that branch uses: `src/chore/<ticket>`, `src/feat/<ticket>`, `src/tickets/<ticket>`), so the name is an assertion about the contents and their navigation depends on it. Never parse the prefix — it is `chore/`, `fix/`, `bugfix/`, `hotfix/`, `docs/`, `refactor/`, or nothing at all, and it changes — so compare the whole path suffix against the whole branch name. Only the generic ones (`src/wip`, `src/review/wip`) change branch by design. That gives one test with no list of magic names to maintain: **does the directory's path name the branch it holds?**
 
 | Path names… | What it means | What to do |
 |---|---|---|
@@ -155,6 +258,7 @@ Compare words, not characters — case and separator style are cosmetic, so `hot
 ```bash
 norm() { printf '%s' "$1" | tr 'A-Z' 'a-z' | tr '_-' '//'; }
 ends_with() { case "$1" in *"$2") return 0;; esac; return 1; }
+PR_HEAD='<PR_HEAD>'                   # its own shell: the comparison needs the PR branch named here
 held="$(git branch --show-current)"   # the branch this directory currently holds
 if [ -z "$held" ]; then echo "generic (detached HEAD) -> offer, default yes"
 elif ends_with "$(norm "$PWD")" "$(norm "$PR_HEAD")"; then echo "names PR_HEAD -> switch here"
@@ -176,7 +280,7 @@ Step 16 re-checks the branch before any later read, for the same reason this ste
 
 **Check 3 — Not in a repo with the right remote.** Ask the user: diff-only review (fast, GitHub API) or full clone (slower, better). Diff-only means both children use `gh pr diff <number> --repo <owner/repo>` and have no surrounding codebase.
 
-**Workspace pre-flight — announce it before continuing.** Post one line stating the resolved workspace and branch before any further step, for example:
+**Workspace pre-flight — announce it before continuing (present mode).** Post one line stating the resolved workspace and branch before any further step, for example:
 
 > Workspace: `/path/to/worktree` — branch `feat/x`, PR #<number> head `feat/x` ✓, base `master` ✓
 
@@ -189,13 +293,34 @@ Before reviewing, confirm the branch still integrates with master. This catches 
 **Fetch latest master:**
 
 ```bash
-cd "$WORKTREE_PATH"
+cd "${WORKTREE_PATH:-$PWD}"   # post mode sets no WORKTREE_PATH: the process cwd is the worktree
 git fetch origin master
 ```
 
 **Merge master into the PR branch:**
 
 ```bash
+# Fill these in from step 1.5: this is its own shell, so nothing set earlier is here.
+PR_HEAD='<PR_HEAD>'
+PR_HEAD_SHA='<PR_HEAD_SHA>'
+
+# The remote-tracking ref the reset below needs, asserted first: a worktree added at a sha has no
+# local branch and need not have this ref, and that failure belongs here rather than after a merge
+# that then has to be undone.
+git rev-parse --verify --quiet "refs/remotes/origin/$PR_HEAD" >/dev/null || {
+  if [ "${PR_REVIEW_MODE:-present}" = post ]; then
+    [ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+    REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+    mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
+    jq -nc --arg assertion head_ref --arg expected "refs/remotes/origin/$PR_HEAD" \
+      --arg actual "no such ref in $PWD" --arg head_sha "$PR_HEAD_SHA" \
+      '{assertion:$assertion,expected:$expected,actual:$actual,head_sha:$head_sha}' \
+      > "$REVIEW_DIR/preflight.json"
+    chmod 600 "$REVIEW_DIR/preflight.json"
+  fi
+  printf 'preflight failed at head_ref: expected refs/remotes/origin/%s, actual none in %s\n' "$PR_HEAD" "$PWD" >&2
+  exit 3
+}
 git merge origin/master --no-edit 2>&1
 MERGE_EXIT=$?
 ```
@@ -204,6 +329,7 @@ MERGE_EXIT=$?
 
 | Outcome | Action |
 |---|---|
+| The block exits 3 before merging | `refs/remotes/origin/<PR_HEAD>` is absent, so the reset would fail after the merge. Stop: the branch was never fetched into this checkout, and the merge probe cannot answer anything about it. In post mode the artefact names the assertion `head_ref`. |
 | Merge succeeds (exit 0) | The branch integrates cleanly. **Drop the merge again** (below), then proceed to step 2b. |
 | Merge conflicts | **Stop.** Report the conflicts to the user and ask for a decision. Do **not** auto-resolve. |
 
@@ -212,6 +338,7 @@ MERGE_EXIT=$?
 This step answers one question: does the branch integrate with master? It is answered the moment the merge succeeds, and the merge commit then has no further job. Leaving it in place is what makes the later pushes awkward: every commit the review makes sits on top of a commit the remote has never seen, and the tempting fix is to rebase your work onto the PR head to get rid of it. **Never do that** — rebase is forbidden (`guide.md`, Hard constraints). Reset instead, and do it now, while nothing of yours is committed:
 
 ```bash
+PR_HEAD='<PR_HEAD>'   # its own shell: the reset needs the branch named again
 git reset --hard origin/"$PR_HEAD"
 ```
 
@@ -238,7 +365,7 @@ Generated frontend artifacts are **gitignored**, so a freshly checked-out worktr
 Build the assets so the workspace matches production before anything type-checks against it:
 
 ```bash
-cd "$WORKTREE_PATH"
+cd "${WORKTREE_PATH:-$PWD}"
 # choose the package manager from the lockfile:
 # bun.lock(b) → bun, pnpm-lock.yaml → pnpm, yarn.lock → yarn, package-lock.json → npm
 bun run build
@@ -256,6 +383,8 @@ Look for a `build` script in `package.json` — in Laravel + Wayfinder projects 
 | Build fails on the branch's own code (a dangling import, a type error) | **Stop.** This **is** a PR finding and a blocker — report it with the failing output. It is not an environment defect, and the review must see it. |
 | No frontend build script (backend-only repo) | Skip this step, note it, and proceed to step 2.5. |
 
+**In post mode nothing is installed.** Dependencies are the caller's, and preflight assertion 6 has already failed the run if they are absent, so a build that cannot run here is reported and stop — the caller provisions. Installing would put this run's workspace under the review's own hand, which is exactly what the caller's provisioning exists to prevent.
+
 **If generated-artifact errors appear anyway** — a missing Vite manifest, missing properties on Wayfinder definitions — do not classify them as pre-existing and do not hand them to the review. Run the build and re-run the pipeline. An error the merge would ship is an error, whatever produced it: production does not care that it predates the diff. Only a build that fails on the branch's own code is reportable, and then it is a blocker, not an environment note.
 
 **Why before the pipeline, not after:** `composer fix` runs `tsc`, and `tsc` reads those generated definitions. Building afterwards validates a different tree than the one that failed. See `guide.md` for the rationale.
@@ -267,7 +396,7 @@ Before doing any review work, run the project's quality pipeline in the worktree
 **Run the pipeline:**
 
 ```bash
-cd "$WORKTREE_PATH" && composer fix 2>&1
+cd "${WORKTREE_PATH:-$PWD}" && composer fix 2>&1
 ```
 
 This runs Pint (formatting), Biome (JS/TS linting), Pest (tests), and tsc (type-check) in one shot — the standard Laravel quality pipeline.
@@ -283,11 +412,13 @@ This runs Pint (formatting), Biome (JS/TS linting), Pest (tests), and tsc (type-
 
 **Staging pattern:**
 ```bash
-git status --porcelain > /tmp/before-fix.txt
+CURRENT_BRANCH='<PR_HEAD>'   # this call is its own shell; post mode never reached the step that sets it
+SNAP="$(mktemp -d)"   # 700, and one per run: two reviews as one user must not share these files
+git status --porcelain > "$SNAP/before"
 composer fix 2>&1
-git status --porcelain > /tmp/after-fix.txt
+git status --porcelain > "$SNAP/after"
 # Stage only files the fixers actually touched:
-comm -13 <(sort /tmp/before-fix.txt) <(sort /tmp/after-fix.txt) | awk '{print $2}' | xargs git add
+comm -13 <(sort "$SNAP/before") <(sort "$SNAP/after") | awk '{print $2}' | xargs git add
 git commit -m "style: quality pipeline auto-fixes"
 git push origin "$CURRENT_BRANCH"
 ```
@@ -339,8 +470,9 @@ Extract a compact summary: title, description, file list (path + additions + del
 **Write the shared context file** — one file both children read, so task strings stay short and the two legs work from identical input:
 
 ```bash
-REVIEW_DIR="${XDG_RUNTIME_DIR}/pr-review/$number"
-mkdir -p "$REVIEW_DIR"
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
 CTX_FILE="$REVIEW_DIR/context.md"
 ```
 
@@ -426,10 +558,16 @@ Remove all internal process references from the report before presenting: no "re
 ### 9. Write the report to a file
 
 ```bash
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
 REPORT_FILE="$REVIEW_DIR/report.md"
+: > "$REPORT_FILE" && chmod 600 "$REPORT_FILE"   # created empty and owner-only, then filled
 ```
 
-Write the sanitised report there. The file lives in the review workspace and survives for follow-up questions.
+Write the sanitised report into that file — it is already mode 600, and truncating it does not change
+the mode, so the report never exists readable by another account even for a moment. The file lives in
+the review workspace and survives for follow-up questions.
 
 ### 9.5. Split times
 
@@ -442,6 +580,9 @@ Derive them from the stamps emitted in step 0. Those values are epoch **millisec
 differences are already milliseconds:
 
 ```bash
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+SPLITS="${SPLITS:-$REVIEW_DIR/splits.tsv}"   # a caller that already has the path may pass it in
 declare -A S
 while IFS=$'\t' read -r k v; do S[$k]=$v; done < "$SPLITS"
 
@@ -499,6 +640,9 @@ and the only way a recurring finding can ever be spotted. The RAM-disk report is
 ephemeral; the log is deliberately not.
 
 ```bash
+MODE="${PR_REVIEW_MODE:-present}"     # its own shell: the mode is read again, not remembered
+PR_HEAD_SHA='<PR_HEAD_SHA>'           # and so is the head this review was for
+TIMING='<paste the object step 9.5 produced>'   # one object, not a reconstruction
 REVIEW_LOG="${REVIEW_LOG:-$HOME/.pi/agent/state/reviews.jsonl}"
 mkdir -p "$(dirname "$REVIEW_LOG")"
 printf '%s\n' "$(jq -nc \
@@ -583,7 +727,7 @@ Then:
 After any inline fixes are committed, run the pipeline again to catch auto-fixes your changes introduced:
 
 ```bash
-cd "$WORKTREE_PATH" && composer fix 2>&1
+cd "${WORKTREE_PATH:-$PWD}" && composer fix 2>&1
 ```
 
 | Outcome | Action |
@@ -594,10 +738,11 @@ cd "$WORKTREE_PATH" && composer fix 2>&1
 > **Do not use `git add -A`.** Same rule as step 2.5: stage only the files `composer fix` changed.
 >
 > ```bash
-> git status --porcelain > /tmp/before-fix.txt
+> SNAP="$(mktemp -d)"   # 700, and one per run: two reviews as one user must not share these files
+> git status --porcelain > "$SNAP/before"
 > composer fix 2>&1
-> git status --porcelain > /tmp/after-fix.txt
-> comm -13 <(sort /tmp/before-fix.txt) <(sort /tmp/after-fix.txt) | awk '{print $2}' | xargs git add
+> git status --porcelain > "$SNAP/after"
+> comm -13 <(sort "$SNAP/before") <(sort "$SNAP/after") | awk '{print $2}' | xargs git add
 > git commit -m "style: quality pipeline auto-fixes"
 > ```
 | Test failures or type errors caused by your fixes | **Revert your changes.** Do not post broken code. Report the failure to the user. |
@@ -605,6 +750,7 @@ cd "$WORKTREE_PATH" && composer fix 2>&1
 **Push all commits before presenting.** Baseline auto-fixes from step 2.5 were already pushed before the review launched; this covers commits made after it. After any inline fixes (and auto-fixes) are committed, push immediately:
 
 ```bash
+CURRENT_BRANCH='<PR_HEAD>'   # its own shell again: set the branch this pushes
 git push origin "$CURRENT_BRANCH"
 ```
 
@@ -668,6 +814,9 @@ Determine the review state from the report's Bottom line, then post.
 **`present` mode** — a human has read it and said post, so the verdict is theirs too:
 
 ```bash
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+REPORT_FILE="$REVIEW_DIR/report.md"
 if grep -q '🟢 \*\*APPROVE\*\*' "$REPORT_FILE"; then
   REVIEW_STATE="--approve"
 else
@@ -679,8 +828,12 @@ gh pr review <number> --repo <owner/repo> $REVIEW_STATE --body-file "$REPORT_FIL
 **`post` mode** — a comment, never `--approve` and never `--request-changes`. An automated first pass has not earned a verdict on someone's merge, and a review that blocks a merge with nobody standing behind it is worse than a comment the author can read and judge:
 
 ```bash
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+REPORT_FILE="$REVIEW_DIR/report.md"
+PR_HEAD_SHA='<PR_HEAD_SHA>'   # its own shell: the marker names the sha this comment belongs to
 MARKER="<!-- pr-review:${PR_HEAD_SHA} -->"
-COMMENT_FILE="$RUN_DIR/comment.md"
+COMMENT_FILE="$REVIEW_DIR/comment.md"
 {
   printf '%s\n\n' '**Automated review — not a final review.** This is an automated first pass, posted while no reviewer was available to read it beforehand. It is a comment: it is not an approval and not a request for changes, and it neither blocks nor unblocks the merge. Expect a human follow-up; treat the findings as a starting point.'
   cat "$REPORT_FILE"
@@ -725,7 +878,7 @@ Verify the comment is visible on the PR before moving on.
 
 When the user says "clean up review <number>": **only when the PR has been merged or closed.** If the PR is still open, remind them the report and context file are active reference material and suggest waiting.
 
-- Delete `${XDG_RUNTIME_DIR}/pr-review/$number/` (review artifacts directory)
+- Delete `${XDG_RUNTIME_DIR}/pr-review/<owner>-<repo>/<number>/` (review artefacts directory)
 - If the user created a worktree for this review, ask them whether to remove it — do not remove it yourself
 
 ### 16. Follow-up questions
@@ -733,10 +886,11 @@ When the user says "clean up review <number>": **only when the PR has been merge
 **Re-check the workspace before you trust any read of it.** The review directory is a shared worktree, deliberately reused across reviews, and it gets switched to other branches between sessions. A session that ended on the PR branch can reopen on a different one, and every `git` or `grep` result then describes the wrong tree. A `grep` for a symbol the PR added returns nothing on a branch that never had it — which reads exactly like the author having fixed it. The failure is silent and confident, so it survives scrutiny: this has already produced a near-miss, where a ledger correct in every other respect was one command away from being posted about the wrong branch.
 
 ```bash
-cd "$WORKTREE_PATH"
+PR_HEAD='<PR_HEAD>'                  # its own shell again
+cd "${WORKTREE_PATH:-$PWD}"          # post mode sets no WORKTREE_PATH: the worktree is the cwd
 git fetch origin "$PR_HEAD"
-git branch --show-current   # must equal PR_HEAD
-git rev-parse HEAD          # must equal the PR head SHA, not an earlier reviewed commit
+git branch --show-current   # must equal PR_HEAD, or be empty where the worktree was added detached
+git rev-parse HEAD          # must equal the head recorded for this review, not an earlier commit
 git status --porcelain      # must be empty before any read is trusted
 ```
 
