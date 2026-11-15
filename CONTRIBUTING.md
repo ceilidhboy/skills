@@ -82,6 +82,6 @@ and ready to use.
 
 ## Notes
 
-- Only `skills/{name}/SKILL.md` matters to installers. The `.claude-plugin/plugin.json` is for Claude Code's plugin system — do not edit it manually.
+- Only `skills/{name}/SKILL.md` matters to installers: `npx skills` discovers skills by scanning it, and Claude Code's plugin loader scans `skills/` for one `<name>/SKILL.md` per skill by default. No manifest is needed — a `.claude-plugin/plugin.json` that enumerates the skills adds nothing to that default scan and rots out of date, which is why there isn't one.
 - The `README.md` is user-facing (how to install, what's available). Keep the Skills table in sync.
 - Run `scripts/link-skills.sh` after any add or update to keep `~/.agents/skills/` current.
