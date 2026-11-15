@@ -85,3 +85,4 @@ and ready to use.
 - Only `skills/{name}/SKILL.md` matters to installers. The `.claude-plugin/plugin.json` is for Claude Code's plugin system — do not edit it manually.
 - The `README.md` is user-facing (how to install, what's available). Keep the Skills table in sync.
 - Run `scripts/link-skills.sh` after any add or update to keep `~/.agents/skills/` current.
+- **A Hermes profile reaches a repo skill through one more hop.** `scripts/link-skills.sh` gives `~/.agents/skills/<name>` → this repo; Hermes loads `$HERMES_HOME/skills/<category>/<name>`, which on the VPS is a symlink to `~/.agents/skills/<name>`. The Hermes home's gitignore deliberately does not version `skills/`, so that second hop is made by hand and has to be repeated on a new machine: `ln -sfn ~/.agents/skills/<name> "$HERMES_HOME/skills/<category>/<name>"`.
