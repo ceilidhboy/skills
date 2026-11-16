@@ -387,42 +387,149 @@ Look for a `build` script in `package.json` — in Laravel + Wayfinder projects 
 
 **If generated-artifact errors appear anyway** — a missing Vite manifest, missing properties on Wayfinder definitions — do not classify them as pre-existing and do not hand them to the review. Run the build and re-run the pipeline. An error the merge would ship is an error, whatever produced it: production does not care that it predates the diff. Only a build that fails on the branch's own code is reportable, and then it is a blocker, not an environment note.
 
-**Why before the pipeline, not after:** `composer fix` runs `tsc`, and `tsc` reads those generated definitions. Building afterwards validates a different tree than the one that failed. See `guide.md` for the rationale.
+**Why before the pipeline, not after:** the pipeline's fix run invokes `tsc`, and `tsc` reads those generated definitions. Building afterwards validates a different tree than the one that failed. See `guide.md` for the rationale.
 
-### 2.5. Establish green baseline
+### 2.5. Establish a green baseline from the project's code quality pipeline
 
-Before doing any review work, run the project's quality pipeline in the worktree to confirm a green starting point. This is non-negotiable: if you review against a dirty baseline, pre-existing failures become your noise, not the PR author's signal. Production assets are already built (step 2b), so `tsc` type-checks against current generated definitions rather than whatever a previous build left behind.
+Before doing any review work, run the project's code quality pipeline in the worktree to confirm a
+green starting point. This is non-negotiable: if you review against a dirty baseline, pre-existing
+failures become your noise, not the PR author's signal. Production assets are already built (step 2b),
+so a type-check reads current generated definitions rather than whatever a previous build left behind.
 
-**Run the pipeline:**
+**The pipeline is the `composer.json` script named `fix`, and a project without it fails here.** One
+command, by design: `fix` is the project's single entry point for its formatting, linting, tests and
+type-checks, so the skill runs exactly that and nothing else. The individual scripts are not a
+fallback — a project exposing `lint` and `types:check` but no `fix` has an incomplete toolchain, and
+the review stops rather than assembling a substitute out of the parts it can find.
+
+**Why the absence is a hard failure and not something to work around.** A review that quietly
+improvises a pipeline judges the branch by a different standard from the one the project claims, and
+nobody can tell which standard was applied; worse, it hides the missing script for months, which is
+how a project gets reviewed weekly without anyone noticing it has no pipeline at all. This is a
+development pipeline, and the whole point of one is to fail fast: the missing script is a defect in
+the project, it surfaces the first time a PR is reviewed, and it is fixed in minutes. Filling the gap
+so the review can carry on turns that into slow, silent rot — the failure does not go away, it goes
+underground. So: no `fix` script, no review.
+
+#### Resolve the pipeline, or stop
+
+Each bash call is its own shell, so the command is written down once, where every later call and the
+report can read it: `$REVIEW_DIR/pipeline.tsv`, the command and the formatters it invokes beside it.
+Nothing is run here — and if there is no `fix` script, this block ends the review instead of returning
+an empty answer for later steps to interpret.
 
 ```bash
-cd "${WORKTREE_PATH:-$PWD}" && composer fix 2>&1
+# The one command the review will run, and the formatters it invokes — or a hard stop. Runs nothing.
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
+PIPELINE="$REVIEW_DIR/pipeline.tsv"
+: > "$PIPELINE"
+PR_HEAD_SHA='<PR_HEAD_SHA>'   # its own shell: the refusal names the head it was asked to review
+
+# A formatter is named from the commands the script actually invokes: composer's `@script` references
+# resolve inside composer.json, and a package manager's `run` with a script name resolves in package.json.
+FORMATTER_RE='pint|php-cs-fixer|phpcbf|biome|prettier|eslint|stylelint'
+
+script_body() { # manifest file, script name — one command per line
+  jq -r --arg s "$2" '.scripts[$s] // empty | if type=="array" then .[] else . end' "$1" 2>/dev/null
+}
+
+formatters_of() { # composer script name, recursion depth — the formatters it invokes, de-duplicated
+  local name="$1" depth="${2:-0}" line sub out=""
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    case "$line" in
+      @*) [ "$depth" -lt 4 ] && out+="$(formatters_of "${line#@}" $((depth + 1)))"$'\n' ;;
+      "bun run "*|"npm run "*|"pnpm run "*|"yarn run "*)
+        sub="${line#* run }"; sub="${sub%% *}"
+        out+="$(script_body package.json "$sub" | grep -oE "$FORMATTER_RE")"$'\n' ;;
+      *) out+="$(grep -oE "$FORMATTER_RE" <<<"$line")"$'\n' ;;
+    esac
+  done <<<"$(script_body composer.json "$name")"
+  printf '%s' "$out" | grep -v '^$' | sort -u
+}
+
+if [ -f composer.json ] && jq -e '(.scripts // {}) | has("fix")' composer.json >/dev/null 2>&1; then
+  printf 'composer run-script fix\t%s\n' "$(formatters_of fix | paste -sd, -)" > "$PIPELINE"
+  printf 'pipeline: composer run-script fix — the project declares one code quality pipeline\n'
+else
+  if [ -f composer.json ]; then
+    DECLARED="$(jq -r '.scripts // {} | keys | join(", ")' composer.json 2>/dev/null)"
+    [ -n "$DECLARED" ] || DECLARED="nothing: composer.json has no scripts"
+  else
+    DECLARED="no composer.json in $PWD"
+  fi
+  printf 'HARD STOP — this project declares no `fix` script, so it has no code quality pipeline to run.\n  found: %s\n  expected: a composer.json script named `fix` that runs formatting, linting, tests and type-checks\nFix the project, not the review: the review has no substitute for its pipeline and will not assemble one.\n' "$DECLARED" >&2
+  if [ "${PR_REVIEW_MODE:-present}" = post ]; then
+    jq -nc --arg assertion pipeline \
+      --arg expected 'a composer.json script named fix, running the project code quality pipeline' \
+      --arg actual "$DECLARED" --arg head_sha "$PR_HEAD_SHA" \
+      '{assertion:$assertion,expected:$expected,actual:$actual,head_sha:$head_sha}' > "$REVIEW_DIR/preflight.json"
+    chmod 600 "$REVIEW_DIR/preflight.json"
+  fi
+  exit 3
+fi
 ```
 
-This runs Pint (formatting), Biome (JS/TS linting), Pest (tests), and tsc (type-check) in one shot — the standard Laravel quality pipeline.
+`pipeline.tsv` holds one line — `composer run-script fix` — for the rest of the run, so step 11 re-runs
+that command instead of re-deriving it, and a project cannot redeclare its toolchain mid-review. The
+second column is what lets post mode's finding name a formatter, and it is derived from what `fix`
+invokes rather than guessed from file extensions. A formatter the resolver does not recognise leaves
+the column empty, and that command's rewrites are then **not** claimed as formatting drift: naming the
+command instead would put a `formatting` row into the recurrence query that no formatter reported, and
+calling a regenerated file a format is a worse error than staying quiet about it.
 
-**Interpret the result:**
+#### Present mode: run it, and keep what the formatters changed
 
-| Outcome | Action |
-|---|---|
-| All green, no file changes | Proceed to step 3. Clean baseline confirmed. |
-| All green, but Pint/Biome auto-fixed files | **Commit and push the fixes immediately** — capture the fixer's output (`git status --porcelain` before and after `composer fix`, stage only the files the fixers touched, commit and push) — so the branch starts green *and* the PR contains the code about to be reviewed. Then proceed to step 3. |
+Present mode is where the fixers earn their keep: they make the branch meet its own declared standard,
+and the rewrites are committed and pushed as pre-review sync. Nothing else is staged — the two
+snapshots around the run decide which files those are.
 
-> **Do not use `git add -A`.** Capture `git status --porcelain` before and after `composer fix`, diff the two snapshots, and stage only the files that changed. `git add -A` would sweep unrelated working-tree changes into a commit labelled “style” and push them to the PR. |
-
-**Staging pattern:**
 ```bash
-CURRENT_BRANCH='<PR_HEAD>'   # this call is its own shell; post mode never reached the step that sets it
-SNAP="$(mktemp -d)"   # 700, and one per run: two reviews as one user must not share these files
-git status --porcelain > "$SNAP/before"
-composer fix 2>&1
-git status --porcelain > "$SNAP/after"
-# Stage only files the fixers actually touched:
-comm -13 <(sort "$SNAP/before") <(sort "$SNAP/after") | awk '{print $2}' | xargs git add
-git commit -m "style: quality pipeline auto-fixes"
-git push origin "$CURRENT_BRANCH"
+# Present mode: run the pipeline and keep what it changed, so the fixers' rewrites can be staged.
+cd "${WORKTREE_PATH:-$PWD}"
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
+[ "${PR_REVIEW_MODE:-present}" = present ] || { echo "pipeline: this is the present-mode block and PR_REVIEW_MODE is $PR_REVIEW_MODE — post mode discards rewrites instead of pushing them" >&2; exit 2; }
+PIPELINE="$REVIEW_DIR/pipeline.tsv"
+[ -s "$PIPELINE" ] || { echo "pipeline: $PIPELINE is missing or empty — the project declares no fix script, which is a hard stop, not a review with nothing to run" >&2; exit 2; }
+rm -f "$REVIEW_DIR/formatting.json"   # post mode's artefact; a stale one would invent a finding here
+
+git status --porcelain > "$REVIEW_DIR/pipeline-before.txt"
+while IFS=$'\t' read -r cmd _formatters; do
+  [ -n "$cmd" ] || continue
+  printf '\n== %s\n' "$cmd"
+  if $cmd 2>&1; then printf '== %s: exit 0\n' "$cmd"; else printf '== %s: exit %s\n' "$cmd" "$?"; fi
+done < "$PIPELINE"
+git status --porcelain > "$REVIEW_DIR/pipeline-after.txt"
+printf '\n== files the pipeline changed:\n'
+comm -13 <(sort "$REVIEW_DIR/pipeline-before.txt") <(sort "$REVIEW_DIR/pipeline-after.txt")
 ```
-| Test failures or type errors | **Stop.** Report the failures to the user. Ask whether to fix them first or proceed with the review knowing the failures pre-exist. Do not proceed silently. |
+
+#### Stage, commit and push what the pipeline rewrote
+
+```bash
+CURRENT_BRANCH='<PR_HEAD>'   # its own shell, and so is this call: the branch is named here
+[ "${PR_REVIEW_MODE:-present}" = present ] || { echo "pipeline: this pushes, so it is present mode's alone; PR_REVIEW_MODE is $PR_REVIEW_MODE" >&2; exit 2; }
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+TOUCHED="$(comm -13 <(sort "$REVIEW_DIR/pipeline-before.txt") <(sort "$REVIEW_DIR/pipeline-after.txt") | awk '{print $2}')"
+if [ -n "$TOUCHED" ]; then
+  printf 'staging the %s file(s) the pipeline rewrote:\n%s\n' "$(grep -c . <<<"$TOUCHED")" "$TOUCHED"
+  printf '%s\n' "$TOUCHED" | xargs -d '\n' -r git add
+  git commit -m "style: quality pipeline auto-fixes"
+  git push origin "$CURRENT_BRANCH"
+else
+  printf 'the pipeline changed nothing — nothing to stage, commit or push\n'
+fi
+```
+
+> **Do not use `git add -A`.** The two snapshots are taken around the run and diffed, so the staged
+> set is the files whose status the pipeline actually changed — a file that was already modified
+> before the run has the same line in both snapshots and is never staged. `git add -A` would sweep
+> unrelated working-tree changes into a commit labelled "style" and push them to the PR.
 
 **Push the auto-fixes before launching the review — do not stop at committing.** A local-only commit means the review validates code the PR does not contain, and GitHub's diff still shows the unformatted version. Pushing mechanical formatting fixes back to the PR branch is normal pre-review sync, not a review change. If the push is rejected (no write access, protected branch), report it and ask whether to continue with the fix committed locally only.
 
@@ -433,6 +540,119 @@ git push origin "$CURRENT_BRANCH"
 ```bash
 git diff $(git merge-base HEAD origin/master)..HEAD --stat
 ```
+
+#### Post mode: run it, then discard every rewrite
+
+`post` mode never commits, and "never pushes" is the weaker half of that: the fixers' rewrites must
+not survive the run either. The author's tree is not the review's to edit, and a reformat left in it
+would be a change nobody authorised, made by a process with nobody reading it. So the pipeline still
+runs — the baseline is the baseline in both modes — the rewrites are discarded, and the drift they
+represented becomes a finding instead of a silent prose line.
+
+```bash
+# Post mode: run the pipeline, then put the tree back exactly as it arrived. Nothing is staged,
+# committed or pushed; the rewrites become a finding instead.
+cd "${WORKTREE_PATH:-$PWD}"
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
+[ "${PR_REVIEW_MODE:-present}" = post ] || { echo "pipeline: this is the post-mode block and PR_REVIEW_MODE is ${PR_REVIEW_MODE:-present} — refusing to discard rewrites the other mode has to keep" >&2; exit 2; }
+PIPELINE="$REVIEW_DIR/pipeline.tsv"
+ARTEFACT="$REVIEW_DIR/formatting.json"
+[ -s "$PIPELINE" ] || { echo "pipeline: $PIPELINE is missing or empty — the project declares no fix script, which is a hard stop, not a review with nothing to run" >&2; exit 2; }
+RUNS="$REVIEW_DIR/pipeline-runs.jsonl"
+: > "$RUNS" && rm -f "$ARTEFACT"
+
+# Exit 4, not 3: nothing was reviewed and no preflight.json was written, so a caller must not go
+# looking for one. 3 means an assertion about the workspace failed and the file says which.
+DIRT="$(git status --porcelain)"
+[ -z "$DIRT" ] || { printf 'pipeline: refused — the tree was not clean, so nothing a formatter rewrites could be told apart from it:\n%s\n' "$DIRT" >&2; exit 4; }
+
+while IFS=$'\t' read -r cmd formatters; do
+  [ -n "$cmd" ] || continue
+  printf '\n== %s\n' "$cmd"
+  if $cmd 2>&1; then status=0; else status=$?; fi
+  changed="$(sort -u <<<"$(git diff --name-only; git diff --cached --name-only)" | grep -v '^$')"
+  files=$(grep -c . <<<"$changed")
+  git reset -q --hard HEAD            # the rewrite is discarded here, before anything reads the tree
+  jq -nc --arg command "$cmd" --argjson exit "$status" --argjson files "$files" \
+    --arg formatters "$formatters" --arg paths "$changed" \
+    '{command:$command,exit:$exit,files:$files,
+      formatters:($formatters|split(",")|map(select(.!=""))),
+      paths:($paths|split("\n")|map(select(.!="")))}' >> "$RUNS"
+  printf '== %s: exit %s, %s file(s) discarded\n' "$cmd" "$status" "$files"
+done < "$PIPELINE"
+
+# One artefact for the whole run — the report and the record both read it, so neither can disagree
+# with the other about what the formatters wanted. Only commands that name a formatter contribute:
+# files are counted once each, not once per command, because two scripts running the same formatter
+# on one file is one file. A command that changed tracked files and names no formatter is recorded
+# in `runs` and claimed as nothing.
+jq -s '(map(select((.formatters|length) > 0))) as $f
+      | {mode:"post",
+         files:($f|map(.paths)|add // [] | unique | length),
+         paths:($f|map(.paths)|add // [] | unique),
+         formatters:($f|map(select(.files > 0))|map(.formatters)|add // [] | unique),
+         runs:.}' "$RUNS" > "$ARTEFACT"
+chmod 600 "$ARTEFACT" && rm -f "$RUNS"
+
+STILL="$(git diff --name-only; git diff --cached --name-only)"
+[ -z "$STILL" ] || { printf 'pipeline: the tree did not come back to HEAD — the review would judge a dirty tree:\n%s\n' "$STILL" >&2; exit 4; }
+
+# A formatter rewrites files; a build script makes new ones, and those are already ignored or were
+# there before. Say what is left, so "byte-identical" is a claim about the tracked tree and the
+# reader can see the difference rather than taking it on trust.
+UNTRACKED="$(git status --porcelain | grep '^??' || true)"
+[ -z "$UNTRACKED" ] || printf 'pipeline: the run left untracked files — build output, not drift, and left in place:\n%s\n' "$UNTRACKED"
+
+UNNAMED=$(jq -r '[.runs[] | select((.formatters|length) == 0 and .files > 0) | .command] | join(", ")' "$ARTEFACT")
+[ -z "$UNNAMED" ] || printf 'pipeline: %s changed tracked files and names no recognised formatter — discarded, and not claimed as formatting drift\n' "$UNNAMED"
+
+FILES=$(jq -r .files "$ARTEFACT")
+if [ "$FILES" -gt 0 ]; then
+  printf 'formatting: %s file(s) would be rewritten by %s — rewrites discarded, so this becomes a minor `formatting` finding\n' \
+    "$FILES" "$(jq -r '.formatters|join(", ")' "$ARTEFACT")"
+else
+  printf 'formatting: no formatter drift, and the tracked tree is back at HEAD — no `formatting` finding\n'
+fi
+```
+
+**Read `formatting.json` and carry one finding — or none.** `files` is how many tracked files a
+formatter would rewrite — counted once each, not once per invocation, so a `fix` script that runs
+the same formatter twice over one file still reports one file — `paths` are those files, `formatters` the tools whose
+runs changed something, and `runs` every command with its exit status and what it touched. When
+`files` is zero there is no finding: a clean tree is a clean tree, and inventing a formatting note
+for it is noise. When it is greater than zero the review carries exactly one finding — one for the
+drift, never one per file:
+
+> ❔ [Inline fix] `formatting` — the project's declared formatters (`pint`) would rewrite 7 files:
+> `app/Foo.php`, `app/Bar.php`, … The branch does not meet the project's own formatting standard;
+> running the pipeline and committing the result closes it.
+
+Minor severity because `standards.md` names formatting as a minor: no judgement is needed, and the
+`formatting` label is in its vocabulary precisely so the recurrence is countable. The bucket is
+`Inline fix` — the remedy is a formatter run, not a decision — and in this mode it is advice to the
+author, because the review itself never acts. Present mode never raises this finding: there the
+drift was fixed and pushed, and the label's absence is information too.
+
+#### Say what ran
+
+Both modes print the command and its exit status, and the report carries one line naming it —
+`Baseline: composer run-script fix — exit 0` — beside the legend at the top (step 6). This is what
+lets a reader of the review tell "green" from "never checked": the report names the pipeline that
+actually ran, and a project that has none never reaches the report at all.
+
+**Interpret the result:**
+
+| Outcome | Action |
+|---|---|
+| Every command exits 0 | Proceed to step 3. In present mode, whatever the pipeline rewrote has been staged, committed and pushed first. |
+| Every command exits 0, and post mode reports formatter drift | Proceed to step 3, carrying the `formatting` finding above into the report. The tree is already back at HEAD. |
+| A command exits non-zero | **Stop.** Report the failing command and its output to the user. Ask whether to fix the failure first or proceed with the review knowing it pre-exists. Do not proceed silently. |
+| The project declares no `fix` script | **Stop** — the resolution block already did, with exit 3 and a `preflight.json` naming assertion `pipeline` in post mode. Nothing to review against is not a review with fewer checks. |
+| The post-mode block refuses (exit 4): a dirty tree, or one that did not return to HEAD | **Stop.** Nothing was reviewed, nothing is claimed, and no `preflight.json` exists — exit 4 is that case, and exit 3 always means an assertion wrote one. A tree that was dirty before the run contradicts preflight's assertion 5, so the workspace is wrong rather than the PR. |
+
+**In post mode nothing is installed.** Dependencies are the caller's, and preflight assertion 6 has already failed the run if they are absent, so a build that cannot run here is reported and stop — the caller provisions. Installing would put this run's workspace under the review's own hand, which is exactly what the caller's provisioning exists to prevent.
 
 > **Tip:** If you're unsure why we run the pipeline before reviewing, or what to do with the results, check `guide.md` for the rationale.
 
@@ -476,7 +696,7 @@ mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
 CTX_FILE="$REVIEW_DIR/context.md"
 ```
 
-It contains: PR number/repo, title, description, file manifest, commit list, base/head branches, the review workspace path, **the full previous review history** (all prior review bodies and inline comments including change requests), **and the whole discussion thread in chronological order** — every comment with its author, timestamp and body. The thread is where the author answers the review, so a round cannot reconcile change requests without it.
+It contains: PR number/repo, title, description, file manifest, commit list, base/head branches, the review workspace path, **the baseline the code quality pipeline produced** — that `composer run-script fix` ran, and what it exited with, and in post mode the formatter drift the run found, since a leg that repeats that drift is a duplicate finding rather than a second opinion — **the full previous review history** (all prior review bodies and inline comments including change requests), **and the whole discussion thread in chronological order** — every comment with its author, timestamp and body. The thread is where the author answers the review, so a round cannot reconcile change requests without it.
 
 ### 4. Launch reviewer and oracle in parallel
 
@@ -500,7 +720,7 @@ Do not block. Keep responding to the user. The two children are yours: check `su
 
 Merge the two reports into one structured document:
 
-1. **Standards** — from the reviewer's Standards findings
+1. **Standards** — from the reviewer's Standards findings, plus post mode's `formatting` finding when the baseline pipeline reported drift (step 2.5; present mode never raises it)
 2. **Spec Fidelity** — from the reviewer's Spec findings
 3. **Pattern Consistency** — from the oracle's pattern/architecture findings
 4. **Authorisation & Scoping** — from the oracle's auth findings
@@ -509,7 +729,7 @@ Merge the two reports into one structured document:
 7. **Tests to add** — the tests the production-code findings call for, red-first where the code is currently wrong
 8. **Most actionable before merge** — your own prioritised list
 
-**Glyph vocabulary — one meaning each.** `🔴` blocker, `🟡` warning, `❔` minor, for findings that are still open; `✅` for fixed this round or verified correct, with the severity dropped; `⚠️` for reversal notes only. `🟢` is never a finding marker — it appears only in the Bottom line verdict, where green means "no problem, go". The red X is reserved for follow-up reviews and means *you were asked for this and did not fix it*: write it after the severity of a previously-requested item that is still open (`🔴❌`, `🟡❌`, `❔❌`), never on a new finding and never in an initial review. Open the report with the legend on one line so the code is self-describing, and name the three buckets beside it — `Inline fix`, `Issue`, `Decision` (step 10). Findings carry their bucket as a bracketed tag after the severity glyph, e.g. `❔ [Inline fix] …`, and the buckets are presented as separate groups in step 10's order, never interleaved. The bucket labels are words rather than glyphs, so the glyph vocabulary above stays one-meaning-each.
+**Glyph vocabulary — one meaning each.** `🔴` blocker, `🟡` warning, `❔` minor, for findings that are still open; `✅` for fixed this round or verified correct, with the severity dropped; `⚠️` for reversal notes only; `🟢` is never a finding marker — it appears only in the Bottom line verdict, where green means "no problem, go". The red X is reserved for follow-up reviews and means *you were asked for this and did not fix it*: write it after the severity of a previously-requested item that is still open (`🔴❌`, `🟡❌`, `❔❌`), never on a new finding and never in an initial review. Open the report with the legend on one line so the code is self-describing, and name the three buckets beside it — `Inline fix`, `Issue`, `Decision` (step 10). **The line under the legend is the baseline line** — the commands that actually ran and what each exited with (step 2.5) — because a reader who cannot see which scripts ran cannot tell "green" from "never checked". Findings carry their bucket as a bracketed tag after the severity glyph, e.g. `❔ [Inline fix] …`, and the buckets are presented as separate groups in step 10's order, never interleaved. The bucket labels are words rather than glyphs, so the glyph vocabulary above stays one-meaning-each.
 
 **Never write a bare number for a GitHub artefact.** Issues and pull requests share one numbering sequence per repository, so `#221` is ambiguous by construction and a reader cannot resolve it. Write `PR #221` or `issue #223` everywhere — headings, tables, prose, and anything that will be posted (review bodies, PR comments, issue bodies, commit messages). The prefix is required even when the surrounding context seems to make it obvious, because these lines are usually skimmed in isolation.
 
@@ -662,7 +882,9 @@ printf '%s\n' "$(jq -nc \
 
 - `labels` is the de-duplicated set of labels from `standards.md` that this review actually raised.
   A fixed vocabulary makes recurrence a `GROUP BY`, not a text search:
-  `jq -r .labels[] "$REVIEW_LOG" | sort | uniq -c | sort -rn`.
+  `jq -r .labels[] "$REVIEW_LOG" | sort | uniq -c | sort -rn`. A `formatting` finding from the
+  baseline pipeline (step 2.5) belongs in this set like any other, and it is the reason the label
+  exists: twelve reviews carrying `formatting` is one missing formatter run, not twelve defects.
 - `timing.legs_ms` is the **longer** leg, not the sum — the legs overlap.
 - `timing.timing_complete` is `false` when a split stamp never landed, and `timing.timing_missing`
   names it. Those rows are still worth keeping for the findings, but exclude them from timing
@@ -720,32 +942,17 @@ Then:
 
 **In `post` mode**, there is nobody to authorise anything, so the buckets are structure for the comment and nothing more. State the disposition line as a recommendation — `Recommended disposition: Inline fix: 7 (~2h) · Issue: 3 · Decision: 0` — and never ask. Fixing is off the table (see Mode), so the line reads as advice to the author, not as a question.
 
-### 11. Run quality pipeline on your changes (only if inline fixes were applied)
+### 11. Run the code quality pipeline on your changes (only if inline fixes were applied)
 
 **`post` mode never fixes anything, so this step and step 11.5 are skipped entirely.** There are no changes of its own to pipeline, no commits to push, and no red-first ordering to honour — the review reports and stops. Reading them is still worth it: they are the standard the comment asks the author to meet.
 
-After any inline fixes are committed, run the pipeline again to catch auto-fixes your changes introduced:
-
-```bash
-cd "${WORKTREE_PATH:-$PWD}" && composer fix 2>&1
-```
+After any inline fixes are committed, run the pipeline again to catch auto-fixes your changes introduced. **Re-run step 2.5's blocks — the Present mode run block, then Stage, commit and push — and do not resolve again.** The project's declaration has not changed, and the two blocks re-derive `REVIEW_DIR` and `PIPELINE` themselves, which is all a second shell needs; copying the loop here would be a second copy of the rule that has to be kept in step with the first. The snapshots are re-taken by the run block, so the stage block stages exactly what this run rewrote.
 
 | Outcome | Action |
 |---|---|
-| All green, no file changes | Proceed to push. |
-| All green, but Pint/Biome auto-fixed files | **Commit the fixes immediately** — capture the fixer's output (`git status --porcelain` before and after `composer fix`, stage only the files the fixers touched), commit, and proceed to push. |
-
-> **Do not use `git add -A`.** Same rule as step 2.5: stage only the files `composer fix` changed.
->
-> ```bash
-> SNAP="$(mktemp -d)"   # 700, and one per run: two reviews as one user must not share these files
-> git status --porcelain > "$SNAP/before"
-> composer fix 2>&1
-> git status --porcelain > "$SNAP/after"
-> comm -13 <(sort "$SNAP/before") <(sort "$SNAP/after") | awk '{print $2}' | xargs git add
-> git commit -m "style: quality pipeline auto-fixes"
-> ```
-| Test failures or type errors caused by your fixes | **Revert your changes.** Do not post broken code. Report the failure to the user. |
+| Every command exits 0, no files changed | Proceed to push. |
+| Every command exits 0, but the fixers rewrote files | Stage, commit and push through step 2.5's block — it stages only what the pipeline touched — then proceed. |
+| A command fails because of your fixes | **Revert your changes.** Do not post broken code. Report the failure to the user. |
 
 **Push all commits before presenting.** Baseline auto-fixes from step 2.5 were already pushed before the review launched; this covers commits made after it. After any inline fixes (and auto-fixes) are committed, push immediately:
 
@@ -758,7 +965,7 @@ git push origin "$CURRENT_BRANCH"
 
 **If the push is rejected as non-fast-forward, or you find a local merge commit under your work, reset — never rebase.** A rebase rewrites commits, and the moment one of them is on the remote it needs a force push to land. Step 2a drops its merge commit precisely so this cannot arise; if it does anyway, get your work back onto the PR head without rewriting anything: `git reset --hard origin/"$PR_HEAD"` and cherry-pick your commits from a backup branch (a cherry-pick creates new commits, so nothing on the remote is rewritten). Never `git push --force`, and never rebase a commit that is already on the remote — merge instead.
 
-> **Same rule applies after the review is posted.** If the user asks you to fix findings on the PR branch later, treat every `composer fix` run the same way: check `git diff` for auto-fixed files, commit them, and push before declaring the task done. The pipeline discipline does not stop at step 13.
+> **Same rule applies after the review is posted.** If the user asks you to fix findings on the PR branch later, treat every pipeline run the same way: check `git diff` for auto-fixed files, commit them, and push before declaring the task done. The pipeline discipline does not stop at step 13.
 
 ### 11.5. Red first — fixing a production-code finding
 
@@ -773,7 +980,7 @@ A defect in shipped behaviour means the suite had a hole, so the fix is not comp
 
 **Shape B — the code is right but nothing pins it.** Write the test; it starts green, because there is no defect to reveal. Its value is the guard, so validate it the same way: break the implementation temporarily, confirm the test fails, then restore.
 
-For both shapes: **re-run the full suite and the quality pipeline** (step 11's discipline: `composer fix`, stage only fixer-touched files, commit, push); **confirm the test is a real guard** by reverting the production change and watching the test fail again before restoring it — a test that stays green when the fix is removed is documentation; and **commit the test with the fix when a test applies**, because a fix commit with no test leaves no evidence the hole was closed.
+For both shapes: **re-run the full suite and the code quality pipeline** (step 11's discipline: stage only fixer-touched files, commit, push); **confirm the test is a real guard** by reverting the production change and watching the test fail again before restoring it — a test that stays green when the fix is removed is documentation; and **commit the test with the fix when a test applies**, because a fix commit with no test leaves no evidence the hole was closed.
 
 When a test is genuinely impractical, the fix still ships and the reason is recorded in one clause, naming the check that would catch it instead. When a previous round's fix is re-checked, the same standard applies: a change request counts as addressed if a test now fails without it, or the report says why no test applies.
 
