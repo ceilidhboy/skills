@@ -67,6 +67,16 @@ or "if you want it" still gets one of the three. An open ❔ with no bucket is a
 falling through a crack: it reads as a dropped item to whoever has to act on it, and it will be
 re-raised as new work a round later.
 
+**An `Issue` must name what un-defers it.** Every `[Issue]` carries three things: what is deferred,
+why it cannot be done here, and the specific condition that would bring it back — a decision someone
+will make, a ticket someone will pick up, a PR that must land first.
+
+An `Issue` whose un-defer condition is "someone does it eventually" is not deferred, it is
+unstarted. **If you cannot name the trigger in one sentence, the finding is either an `Inline fix`
+you have not done yet or a `Decision` you have not surfaced**, and it must be re-bucketed before the
+report is written. The same test applies to the words "optional", "worth saying" and "if you want
+it": each is a deferral with the condition left out.
+
 **A remedy that splits gets both buckets.** When one part of the fix needs no decision — making a
 map exhaustive, writing the explicit case, pinning the behaviour that exists — and another part
 does (which colour, which policy, which wording), the finding is an `Inline fix` **and** an `Issue`

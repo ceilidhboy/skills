@@ -510,15 +510,35 @@ printf '%s\n' "$(jq -nc \
   --argjson legs '{"reviewer":"<ok|died|timeout>","oracle":"<ok|died|timeout>"}' \
   --argjson counts '{"blocker":N,"warning":N,"minor":N}' \
   --argjson labels '["<label>"]' \
+  --argjson disposition '{"inline":N,"issue":N,"decision":N}' \
+  --argjson deferred '[{"label":"<label>","undefers_when":"<the condition that brings it back>"}]' \
   --arg mode "$MODE" \
   --arg comment_url "${COMMENT_URL:-}" \
   --argjson timing "$TIMING" \
-  '{date:$date,repo:$repo,pr:$pr,sha:$sha,verdict:$verdict,mode:$mode,comment_url:$comment_url,legs:$legs,counts:$counts,labels:$labels,timing:$timing}')" >> "$REVIEW_LOG"
+  '{date:$date,repo:$repo,pr:$pr,sha:$sha,verdict:$verdict,mode:$mode,comment_url:$comment_url,legs:$legs,counts:$counts,labels:$labels,disposition:$disposition,deferred:$deferred,timing:$timing}')" >> "$REVIEW_LOG"
 ```
 
 - `labels` is the de-duplicated set of labels from `standards.md` that this review actually raised.
   A fixed vocabulary makes recurrence a `GROUP BY`, not a text search:
   `jq -r .labels[] "$REVIEW_LOG" | sort | uniq -c | sort -rn`.
+- `disposition` counts the findings in each bucket from step 10, so the log can answer how much
+  work a review deferred rather than only how many findings it raised:
+  `jq -s '{inline:(map(.disposition.inline // 0)|add), issue:(map(.disposition.issue // 0)|add), decision:(map(.disposition.decision // 0)|add)}' "$REVIEW_LOG"`.
+- `deferred` records every `[Issue]` finding with the condition that un-defers it — the same
+  obligation `standards.md` puts on the report, written where it can be checked later rather than
+  only remembered. The two fields together make an `Issue` without a condition a contradiction the
+  log itself can find, old rows included:
+  `jq -r 'select((.disposition.issue // 0) > 0 and (.deferred // [] | length) == 0) | "\(.date) \(.repo) PR #\(.pr)"' "$REVIEW_LOG"`.
+  Before appending the line, run the consistency check and **still write the row** when it fires:
+
+  ```bash
+  if [ "$(jq -r '.issue // 0' <<<"$DISPOSITION")" -gt 0 ] && [ "$(jq 'length' <<<"$DEFERRED")" -eq 0 ]; then
+    echo "⚠ RECORD INCONSISTENT — $(jq -r '.issue' <<<"$DISPOSITION") Issue finding(s) with no un-defer condition" >&2
+  fi
+  ```
+
+  The row is worth keeping for its findings; the loud line is what stops an `Issue` becoming a
+  deferral with the condition left out.
 - `timing.legs_ms` is the **longer** leg, not the sum — the legs overlap.
 - `timing.timing_complete` is `false` when a split stamp never landed, and `timing.timing_missing`
   names it. Those rows are still worth keeping for the findings, but exclude them from timing
@@ -627,7 +647,11 @@ A defect in shipped behaviour means the suite had a hole, so the fix is not comp
 
 **Shape B — the code is right but nothing pins it.** Write the test; it starts green, because there is no defect to reveal. Its value is the guard, so validate it the same way: break the implementation temporarily, confirm the test fails, then restore.
 
-For both shapes: **re-run the full suite and the quality pipeline** (step 11's discipline: `composer fix`, stage only fixer-touched files, commit, push); **confirm the test is a real guard** by reverting the production change and watching the test fail again before restoring it — a test that stays green when the fix is removed is documentation; and **commit the test with the fix when a test applies**, because a fix commit with no test leaves no evidence the hole was closed.
+**Shape C — the fix introduces a new cost.** Red-first proves the defect is gone; it says nothing about what the fix costs. When an inline fix puts a new per-item dependency — a query, a settings or cache read, an HTTP call, a filesystem stat — inside a loop, a collection mapper, or a DTO that runs per row, **measure it**: query count on a realistic fixture, before and after. Then pin it with an assertion.
+
+Memoisation, batching and eager loading count as done only when removing them turns that assertion red. A guard that stays green without the memoisation is documentation, and the cost is still there. A mutation check on the *defect* cannot see this, because the fix is what introduced it.
+
+For all three shapes: **re-run the full suite and the quality pipeline** (step 11's discipline: `composer fix`, stage only fixer-touched files, commit, push); **confirm the test is a real guard** by reverting the production change and watching the test fail again before restoring it — a test that stays green when the fix is removed is documentation; and **commit the test with the fix when a test applies**, because a fix commit with no test leaves no evidence the hole was closed.
 
 When a test is genuinely impractical, the fix still ships and the reason is recorded in one clause, naming the check that would catch it instead. When a previous round's fix is re-checked, the same standard applies: a change request counts as addressed if a test now fails without it, or the report says why no test applies.
 
