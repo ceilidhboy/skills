@@ -73,6 +73,7 @@ bash scripts/verify-skills.sh --mode dev
 | single-task-responsibility | Recognize SRP violations in task implementation |
 | spatie-data-transfer-objects | Spatie Laravel Data transfer objects with TypeScript generation |
 | tdd-laravel | Test-driven development with Pest PHP |
+| test-gate | The gate before any production code write — a behaviour change needs a red test first; a refactor needs green plus coverage first |
 | troubleshooting | General troubleshooting diagnostic router |
 | troubleshooting-backend | Laravel/PHP backend error troubleshooting |
 | troubleshooting-frontend | TypeScript/React frontend error troubleshooting |
