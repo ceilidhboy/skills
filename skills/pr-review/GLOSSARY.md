@@ -28,6 +28,24 @@ _Avoid_: second opinion, verifier, sanity check
 Everything before the legs launch: parsing, workspace, context and standards.
 _Avoid_: setup, warm-up, preamble, preparation
 
+**Code quality pipeline**:
+The project's own formatting, linting, test and type-check commands, exposed as the `composer.json`
+script named `fix`. It runs before every review, and a project without it stops the review: there is
+no substitute for it and none is assembled from the individual scripts.
+_Avoid_: quality gate, toolchain setup, composer fix, the pipeline
+
+**Drift**:
+The tracked files the project's formatter would rewrite at the head being reviewed. Post mode discards
+the rewrite and reports the drift; present mode commits and pushes it instead.
+_Avoid_: style noise, formatting error, lint failure
+
+**Preflight failure**:
+The file `preflight.json` written when an assertion about the workspace or the merge probe's ref fails
+in post mode, naming the assertion, what it expected, what it found and the head sha. It is how a
+caller learns that a review did not happen; the run exits non-zero immediately after writing it, and
+present mode — where a human is reading — stops with the message and writes no file.
+_Avoid_: error log, failure report, diagnostics, preflight error
+
 **Assembly**:
 Everything after both legs return: consolidation, reversal check, sanitisation, report.
 _Avoid_: synthesis, merge, post-processing, consolidation phase

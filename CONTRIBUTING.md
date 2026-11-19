@@ -14,6 +14,8 @@ Guidelines for adding or updating skills in this repository.
 
 Edit the `SKILL.md` file directly, then run `scripts/link-skills.sh` to update the local symlink. After pushing to GitHub, see [Verification after a GitHub install](#2-verification-after-a-github-install) below.
 
+Where a skill embeds bash an agent runs, its behaviour is tested rather than described: the test reads the blocks out of `SKILL.md` at run time and drives them, so there is one copy of the code. The two that exist are `scripts/test-split-times.sh` and `scripts/test-preflight.sh` (both for `pr-review`); run the relevant one after editing a block, and add a case to it when you add behaviour.
+
 ## Verification: two-step workflow
 
 After adding or updating a skill, you should verify it works in two distinct ways:
@@ -80,6 +82,6 @@ and ready to use.
 
 ## Notes
 
-- Only `skills/{name}/SKILL.md` matters to installers. The `.claude-plugin/plugin.json` is for Claude Code's plugin system — do not edit it manually.
+- Only `skills/{name}/SKILL.md` matters to installers: `npx skills` discovers skills by scanning it, and Claude Code's plugin loader scans `skills/` for one `<name>/SKILL.md` per skill by default. No manifest is needed — a `.claude-plugin/plugin.json` that enumerates the skills adds nothing to that default scan and rots out of date, which is why there isn't one.
 - The `README.md` is user-facing (how to install, what's available). Keep the Skills table in sync.
 - Run `scripts/link-skills.sh` after any add or update to keep `~/.agents/skills/` current.

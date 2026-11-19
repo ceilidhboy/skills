@@ -43,12 +43,19 @@ countable later: twelve reviews with `debug-logging` is one missing lint rule, n
 | `dead-code` | unreachable, unused, or superseded code left behind |
 | `spec-drift` | the change does not match the PR description or spec |
 | `stale-doc` | prose, comments or plans that now describe something else |
+| `formatting` | a formatter the project declares would rewrite files, and the run discarded the rewrite rather than pushing it |
 | `scope-creep` | unrelated change bundled into this PR |
 | `perf` | a real cost on a hot path |
 
 Adding a label is a change to this file and is reviewed like code. Do not invent one at report
 time: pick the nearest, and say in the finding if none fits — an unmatched finding is a signal that
 the vocabulary needs extending, which is itself worth knowing.
+
+**`formatting` comes from the baseline pipeline, not from a leg.** It is raised when the project's
+formatter would rewrite files and the run discarded the rewrites instead of pushing them (step 2.5,
+post mode), and it is **one finding per review**: the formatter names and the count, never one
+finding per file. Twenty files of drift is one missing formatter run, and the recurrence query reads
+reviews, not files — a per-file report would inflate the count until it told you nothing.
 
 ## Disposition
 

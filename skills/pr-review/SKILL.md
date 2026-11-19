@@ -11,9 +11,13 @@ You are the orchestrator of the PR review. You run the `reviewer` and `oracle` s
 names the words not to use for each. Use its terms in the report, in the record and in anything you post,
 because the same thing under two names is how a review ends up arguing with itself.
 
-## Review artifacts directory
+## Review artefacts directory
 
-Review artifacts (context file, report) must live in a RAM disk, not in the project directory. The correct location is `${XDG_RUNTIME_DIR}/pr-review/$number/` where `XDG_RUNTIME_DIR` is the user-specific runtime directory (typically `/run/user/$(id -u)`). Check it with `echo $XDG_RUNTIME_DIR` — it defaults to `/run/user/1000` on most Linux systems. Do NOT create review artifacts inside the project worktree — it pollutes the working tree and risks them being committed.
+Review artefacts (context file, report, split log, preflight failure) must live in a RAM disk, not in the project directory, in one directory per repository per pull request:
+
+`${XDG_RUNTIME_DIR}/pr-review/<owner>-<repo>/<number>/`
+
+`XDG_RUNTIME_DIR` is the user-specific runtime directory (`/run/user/$(id -u)`, typically `/run/user/1000`) and it is **mandatory**: a run with it unset stops before doing anything else. There is no fallback, because a shared `/tmp/pr-review/` is readable by every local account and a report names a repository's vulnerabilities. For the same reason the directory is created mode 700 and the report is written mode 600. The owner and the repository name are joined by a hyphen (`Socially-Free-auto-pr-review`) so that the directory names one repository in one segment: splitting on `/` would put every repository of one owner under a shared parent, which is not a repository's directory and reads as one to anything that lists them. Do NOT create review artefacts inside the project worktree — it pollutes the working tree and risks them being committed.
 
 ## Mode: present or post
 
@@ -23,6 +27,12 @@ The skill runs in one of two modes, chosen by the caller:
 |---|---|---|
 | `present` (default) | nothing | Review, present the report, wait, then post it as an approval or a request for changes |
 | `post` | `PR_REVIEW_MODE=post` | Review, then post the report as a **plain PR comment** without asking. No inline fixes, no commits, no pushes, no issues, no approval, no change request |
+
+**In post mode the worktree arrives as the process's working directory and nothing else** — no
+variable but `PR_REVIEW_MODE` crosses the boundary, so there is no `--workdir` to get wrong and no
+second source of truth about which tree is being reviewed. Preflight asserts the directory instead,
+which is step 2's post-mode block: the caller provisioned the workspace, and preflight is what proves
+it arrived.
 
 Read the mode, do not infer it — it is one command, and the default leaves interactive use exactly as it was:
 
@@ -41,21 +51,34 @@ esac
 The variable belongs to the caller. This skill defines the two values and no others, and names nothing about who is calling it.
 
 ## Workflow
-### 0. Open the split-time log
+### 0. Resolve the artefact directory, then open the split-time log
 
-Split times are captured **as each phase ends**, never reconstructed afterwards. A bash call is its
-own shell, so a variable set in step 4 is gone by step 9 — the stamps therefore go into a file, one
-append per phase:
+Every artefact this run produces lives in one directory, and it is resolved first, before anything
+else can fail — a preflight failure has to be written somewhere, and that somewhere cannot depend on
+the step that failed. This is the **artefact-directory preamble**, and every later block that needs
+the directory repeats it verbatim, because a bash call is its own shell:
 
 ```bash
-SPLITS="${XDG_RUNTIME_DIR:-/tmp}/pr-review/<number>/splits.tsv"
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
 ```
 
-Each stamp is this command, with the name substituted; the file (and its directory) are created by
-the first append:
+Fill in `<owner>-<repo>` (owner and repository joined by a hyphen, `Socially-Free-auto-pr-review`) and
+`<number>` before running it, and the same two values in every later copy — a variable set here is gone
+by the next call, and a block that reads `$REVIEW_DIR` without setting it writes `/context.md`.
+
+Split times are captured **as each phase ends**, never reconstructed afterwards. They go into a file,
+one append per phase, and each append re-derives the path in its own call:
+
+Each stamp is this command, with the name substituted; it is a whole call, so it re-derives the path:
 
 ```bash
-mkdir -p "$(dirname "$SPLITS")" && printf '%s\t%s\n' <name> "$(date +%s%3N)" >> "$SPLITS"
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
+SPLITS="$REVIEW_DIR/splits.tsv"
+printf '%s\t%s\n' <name> "$(date +%s%3N)" >> "$SPLITS"
 ```
 
 | Stamp | Emit at | Means |
@@ -92,10 +115,15 @@ If the owner/repo cannot be determined from the task or the git remote, ask the 
 Fetch the PR's branches **before** any workspace decision. Step 2's "already on the PR branch" check compares the current branch against `headRefName`, so fetching it later makes that check impossible to evaluate — that ordering bug is why an already-checked-out PR branch gets missed.
 
 ```bash
-gh pr view <number> --repo <owner/repo> --json number,title,url,state,headRefName,baseRefName
+gh pr view <number> --repo <owner/repo> --json number,title,url,state,headRefName,baseRefName,headRefOid
 ```
 
-Hold `PR_HEAD`, `PR_BASE`, and `PR_TITLE` for the rest of the workflow. If `state` is not `OPEN`, say so and confirm the user still wants a review.
+Hold `PR_HEAD`, `PR_BASE`, `PR_TITLE` and `PR_HEAD_SHA` for the rest of the workflow. `PR_HEAD_SHA` is
+the head **this review was asked to review**: the sha the caller recorded when it named one — a queue
+claims an entry at a head, and that head is what the review is for — and `headRefOid` when it named
+none. Substituting the current tip for a recorded sha would review a commit nobody asked about, so a
+caller's sha is never silently upgraded. If `state` is not `OPEN`, say so and confirm the user still
+wants a review.
 
 **Now the target-branch gate. Do not skip it.**
 
@@ -112,6 +140,80 @@ Hold `PR_HEAD`, `PR_BASE`, and `PR_TITLE` for the rest of the workflow. If `stat
 Running this before the workspace questions means a mis-targeted PR is rejected without ever asking the user where to work.
 
 ### 2. Choose the review workspace (current directory first)
+
+#### Post mode asserts the workspace; it does not choose one
+
+In post mode the worktree arrived as the process's working directory, and the caller created it,
+checked the head out and installed its dependencies. There is nothing to ask, and nothing to infer
+from the path: the path-names-the-branch heuristic below encodes one operator's personal layout, and a
+caller's `wt/<number>` is not named for a branch at all. So post mode runs the six assertions below, in
+order, and goes straight to step 2a. Everything else in this section — Checks 1 to 3, the guard, the
+announcement — is present mode's.
+
+Each assertion is a fact about the tree the review is about to read, and each failure names what was
+wanted and what was found in `preflight.json`, so a wrong tree stops the run at the front instead of
+becoming forty minutes of findings about somebody else's branch. Exit status is 3 for a failed
+assertion and 2 for a missing `XDG_RUNTIME_DIR`.
+
+```bash
+# Fill in the four values resolved above, then run the block as one shell call.
+REPO='<owner/repo>'          # owner/name — compared as owner/name, whatever the URL looks like
+PR=<number>
+HEAD_BRANCH='<PR_HEAD>'      # the PR's head branch
+HEAD_SHA='<PR_HEAD_SHA>'     # the head this review was asked for, in full
+
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/$PR"
+mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
+ARTEFACT="$REVIEW_DIR/preflight.json"
+rm -f "$ARTEFACT"            # a stale failure is not this run's result
+
+fail() { # assertion expected actual
+  jq -nc --arg assertion "$1" --arg expected "$2" --arg actual "$3" --arg head_sha "$HEAD_SHA" \
+    '{assertion:$assertion,expected:$expected,actual:$actual,head_sha:$head_sha}' > "$ARTEFACT"
+  chmod 600 "$ARTEFACT"
+  printf 'preflight failed at %s: expected %s, actual %s\n' "$1" "$2" "$3" >&2
+  exit 3
+}
+
+# 1. the working directory is the worktree itself, not a directory somewhere inside a repository:
+#    the caller set the cwd to the tree, and every later assertion — and the pipeline — assumes the top
+TOP="$(git rev-parse --show-toplevel 2>/dev/null)"
+[ -n "$TOP" ] || fail worktree "the top of a git worktree" "$PWD is not in a repository"
+[ "$TOP" = "$(pwd -P)" ] || fail worktree "the top of the worktree, $PWD" "inside $TOP"
+
+# 2. origin is the repository under review, compared as owner/repo whatever form the URL takes
+ORIGIN="$(git remote get-url origin 2>/dev/null)"
+SLUG="$(printf '%s' "$ORIGIN" | sed -e 's#^[a-z][a-z+]*://[^/]*/##' -e 's#^[^@/]*@[^:]*:##' -e 's#/$##' -e 's#\.git$##')"
+[ "$(printf '%s' "$SLUG" | tr '[:upper:]' '[:lower:]')" = "$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')" ] \
+  || fail remote "$REPO" "${ORIGIN:-no origin remote} -> ${SLUG:-nothing}"
+
+# 3. the branch, where the worktree is on one, is the PR's head branch. A detached worktree makes no
+#    branch claim — a caller checks the head out by sha — and assertion 4 is what pins it instead.
+ON="$(git branch --show-current)"
+[ -z "$ON" ] || [ "$ON" = "$HEAD_BRANCH" ] || fail branch "$HEAD_BRANCH" "on $ON"
+
+# 4. HEAD is the head the review was asked for, not the one an earlier run left behind
+AT="$(git rev-parse HEAD)"
+[ "$AT" = "$HEAD_SHA" ] || fail head_sha "$HEAD_SHA" "$AT"
+
+# 5. the working tree is clean, so every difference the review reports belongs to the PR
+DIRT="$(git status --porcelain)"
+[ -z "$DIRT" ] || fail clean "nothing modified, staged, untracked or deleted" "$DIRT"
+
+# 6. the dependencies are there. They are never installed here: provisioning is the caller's job
+MISSING=""
+[ -f composer.json ] && [ ! -f vendor/autoload.php ] && MISSING="vendor/autoload.php"
+[ -f package.json ] && [ ! -d node_modules ] && MISSING="${MISSING:+$MISSING, }node_modules/"
+[ -z "$MISSING" ] || fail dependencies "vendor/autoload.php and node_modules/ where the project declares them" "missing $MISSING"
+
+printf 'preflight ok: %s PR #%s, %s at %s, in %s — six assertions passed\n' \
+  "$REPO" "$PR" "${ON:-detached}" "$HEAD_SHA" "$PWD"
+```
+
+**Never create a worktree and never install a dependency.** Both are the caller's; a skill that
+provisions its own workspace can no longer be told which tree it reviewed. A missing `vendor/` is
+assertion 6 failing, not a build step to run.
 
 Check whether the current working directory is inside a git repo:
 
@@ -131,6 +233,7 @@ WORKTREE_PATH=""
 **On a match: set `WORKTREE_PATH="$TOPLEVEL"` and continue. Do not ask the user where to work, do not offer alternatives, do not create or switch anything.** Asking here is the exact failure this check exists to prevent. Then bring the branch up to date:
 
 ```bash
+CURRENT_BRANCH='<PR_HEAD>'   # a match means this directory holds the PR branch; its own shell, so name it
 git fetch origin "$CURRENT_BRANCH"
 BEHIND="$(git rev-list --count HEAD..origin/"$CURRENT_BRANCH" 2>/dev/null)"
 if [ "$BEHIND" != "0" ]; then
@@ -142,7 +245,7 @@ If the fast-forward fails, stop and ask the user rather than forcing anything.
 
 **Guard — dirty working tree.** Before doing any review work, verify the review directory is clean. Run `git status --porcelain` and stop if there is *any* output — modified tracked files, untracked files, new files, deleted files, or staged changes. Previous reviews, abandoned experiments, or other branches may have left debris. Report the full `git status --porcelain` output and ask the user whether to commit, stash, or discard everything before proceeding. Ignored build artifacts (see step 2b) do not count — they are expected. Do not review over a dirty tree; it produces false findings and makes it impossible to tell which changes belong to the PR.
 
-**Check 2 — Same repo, different branch.** The directory is the right repository but not the PR branch. **Compare the directory's path with the branch it is holding before deciding anything** — the user keeps one worktree per branch, named for it **in full** (`src/master`, `src/develop`, then one per ticket branch under whatever prefix that branch uses: `src/chore/<ticket>`, `src/feat/<ticket>`, `src/tickets/<ticket>`), so the name is an assertion about the contents and their navigation depends on it. Never parse the prefix — it is `chore/`, `fix/`, `bugfix/`, `hotfix/`, `docs/`, `refactor/`, or nothing at all, and it changes — so compare the whole path suffix against the whole branch name. Only the generic ones (`src/wip`, `src/review/wip`) change branch by design. That gives one test with no list of magic names to maintain: **does the directory's path name the branch it holds?**
+**Check 2 — Same repo, different branch. Present mode only** — post mode has already asserted and never asks, so a directory's name decides nothing there. The directory is the right repository but not the PR branch. **Compare the directory's path with the branch it is holding before deciding anything** — the user keeps one worktree per branch, named for it **in full** (`src/master`, `src/develop`, then one per ticket branch under whatever prefix that branch uses: `src/chore/<ticket>`, `src/feat/<ticket>`, `src/tickets/<ticket>`), so the name is an assertion about the contents and their navigation depends on it. Never parse the prefix — it is `chore/`, `fix/`, `bugfix/`, `hotfix/`, `docs/`, `refactor/`, or nothing at all, and it changes — so compare the whole path suffix against the whole branch name. Only the generic ones (`src/wip`, `src/review/wip`) change branch by design. That gives one test with no list of magic names to maintain: **does the directory's path name the branch it holds?**
 
 | Path names… | What it means | What to do |
 |---|---|---|
@@ -155,6 +258,7 @@ Compare words, not characters — case and separator style are cosmetic, so `hot
 ```bash
 norm() { printf '%s' "$1" | tr 'A-Z' 'a-z' | tr '_-' '//'; }
 ends_with() { case "$1" in *"$2") return 0;; esac; return 1; }
+PR_HEAD='<PR_HEAD>'                   # its own shell: the comparison needs the PR branch named here
 held="$(git branch --show-current)"   # the branch this directory currently holds
 if [ -z "$held" ]; then echo "generic (detached HEAD) -> offer, default yes"
 elif ends_with "$(norm "$PWD")" "$(norm "$PR_HEAD")"; then echo "names PR_HEAD -> switch here"
@@ -176,7 +280,7 @@ Step 16 re-checks the branch before any later read, for the same reason this ste
 
 **Check 3 — Not in a repo with the right remote.** Ask the user: diff-only review (fast, GitHub API) or full clone (slower, better). Diff-only means both children use `gh pr diff <number> --repo <owner/repo>` and have no surrounding codebase.
 
-**Workspace pre-flight — announce it before continuing.** Post one line stating the resolved workspace and branch before any further step, for example:
+**Workspace pre-flight — announce it before continuing (present mode).** Post one line stating the resolved workspace and branch before any further step, for example:
 
 > Workspace: `/path/to/worktree` — branch `feat/x`, PR #<number> head `feat/x` ✓, base `master` ✓
 
@@ -189,13 +293,34 @@ Before reviewing, confirm the branch still integrates with master. This catches 
 **Fetch latest master:**
 
 ```bash
-cd "$WORKTREE_PATH"
+cd "${WORKTREE_PATH:-$PWD}"   # post mode sets no WORKTREE_PATH: the process cwd is the worktree
 git fetch origin master
 ```
 
 **Merge master into the PR branch:**
 
 ```bash
+# Fill these in from step 1.5: this is its own shell, so nothing set earlier is here.
+PR_HEAD='<PR_HEAD>'
+PR_HEAD_SHA='<PR_HEAD_SHA>'
+
+# The remote-tracking ref the reset below needs, asserted first: a worktree added at a sha has no
+# local branch and need not have this ref, and that failure belongs here rather than after a merge
+# that then has to be undone.
+git rev-parse --verify --quiet "refs/remotes/origin/$PR_HEAD" >/dev/null || {
+  if [ "${PR_REVIEW_MODE:-present}" = post ]; then
+    [ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+    REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+    mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
+    jq -nc --arg assertion head_ref --arg expected "refs/remotes/origin/$PR_HEAD" \
+      --arg actual "no such ref in $PWD" --arg head_sha "$PR_HEAD_SHA" \
+      '{assertion:$assertion,expected:$expected,actual:$actual,head_sha:$head_sha}' \
+      > "$REVIEW_DIR/preflight.json"
+    chmod 600 "$REVIEW_DIR/preflight.json"
+  fi
+  printf 'preflight failed at head_ref: expected refs/remotes/origin/%s, actual none in %s\n' "$PR_HEAD" "$PWD" >&2
+  exit 3
+}
 git merge origin/master --no-edit 2>&1
 MERGE_EXIT=$?
 ```
@@ -204,6 +329,7 @@ MERGE_EXIT=$?
 
 | Outcome | Action |
 |---|---|
+| The block exits 3 before merging | `refs/remotes/origin/<PR_HEAD>` is absent, so the reset would fail after the merge. Stop: the branch was never fetched into this checkout, and the merge probe cannot answer anything about it. In post mode the artefact names the assertion `head_ref`. |
 | Merge succeeds (exit 0) | The branch integrates cleanly. **Drop the merge again** (below), then proceed to step 2b. |
 | Merge conflicts | **Stop.** Report the conflicts to the user and ask for a decision. Do **not** auto-resolve. |
 
@@ -212,6 +338,7 @@ MERGE_EXIT=$?
 This step answers one question: does the branch integrate with master? It is answered the moment the merge succeeds, and the merge commit then has no further job. Leaving it in place is what makes the later pushes awkward: every commit the review makes sits on top of a commit the remote has never seen, and the tempting fix is to rebase your work onto the PR head to get rid of it. **Never do that** — rebase is forbidden (`guide.md`, Hard constraints). Reset instead, and do it now, while nothing of yours is committed:
 
 ```bash
+PR_HEAD='<PR_HEAD>'   # its own shell: the reset needs the branch named again
 git reset --hard origin/"$PR_HEAD"
 ```
 
@@ -238,7 +365,7 @@ Generated frontend artifacts are **gitignored**, so a freshly checked-out worktr
 Build the assets so the workspace matches production before anything type-checks against it:
 
 ```bash
-cd "$WORKTREE_PATH"
+cd "${WORKTREE_PATH:-$PWD}"
 # choose the package manager from the lockfile:
 # bun.lock(b) → bun, pnpm-lock.yaml → pnpm, yarn.lock → yarn, package-lock.json → npm
 bun run build
@@ -256,42 +383,153 @@ Look for a `build` script in `package.json` — in Laravel + Wayfinder projects 
 | Build fails on the branch's own code (a dangling import, a type error) | **Stop.** This **is** a PR finding and a blocker — report it with the failing output. It is not an environment defect, and the review must see it. |
 | No frontend build script (backend-only repo) | Skip this step, note it, and proceed to step 2.5. |
 
+**In post mode nothing is installed.** Dependencies are the caller's, and preflight assertion 6 has already failed the run if they are absent, so a build that cannot run here is reported and stop — the caller provisions. Installing would put this run's workspace under the review's own hand, which is exactly what the caller's provisioning exists to prevent.
+
 **If generated-artifact errors appear anyway** — a missing Vite manifest, missing properties on Wayfinder definitions — do not classify them as pre-existing and do not hand them to the review. Run the build and re-run the pipeline. An error the merge would ship is an error, whatever produced it: production does not care that it predates the diff. Only a build that fails on the branch's own code is reportable, and then it is a blocker, not an environment note.
 
-**Why before the pipeline, not after:** `composer fix` runs `tsc`, and `tsc` reads those generated definitions. Building afterwards validates a different tree than the one that failed. See `guide.md` for the rationale.
+**Why before the pipeline, not after:** the pipeline's fix run invokes `tsc`, and `tsc` reads those generated definitions. Building afterwards validates a different tree than the one that failed. See `guide.md` for the rationale.
 
-### 2.5. Establish green baseline
+### 2.5. Establish a green baseline from the project's code quality pipeline
 
-Before doing any review work, run the project's quality pipeline in the worktree to confirm a green starting point. This is non-negotiable: if you review against a dirty baseline, pre-existing failures become your noise, not the PR author's signal. Production assets are already built (step 2b), so `tsc` type-checks against current generated definitions rather than whatever a previous build left behind.
+Before doing any review work, run the project's code quality pipeline in the worktree to confirm a
+green starting point. This is non-negotiable: if you review against a dirty baseline, pre-existing
+failures become your noise, not the PR author's signal. Production assets are already built (step 2b),
+so a type-check reads current generated definitions rather than whatever a previous build left behind.
 
-**Run the pipeline:**
+**The pipeline is the `composer.json` script named `fix`, and a project without it fails here.** One
+command, by design: `fix` is the project's single entry point for its formatting, linting, tests and
+type-checks, so the skill runs exactly that and nothing else. The individual scripts are not a
+fallback — a project exposing `lint` and `types:check` but no `fix` has an incomplete toolchain, and
+the review stops rather than assembling a substitute out of the parts it can find.
+
+**Why the absence is a hard failure and not something to work around.** A review that quietly
+improvises a pipeline judges the branch by a different standard from the one the project claims, and
+nobody can tell which standard was applied; worse, it hides the missing script for months, which is
+how a project gets reviewed weekly without anyone noticing it has no pipeline at all. This is a
+development pipeline, and the whole point of one is to fail fast: the missing script is a defect in
+the project, it surfaces the first time a PR is reviewed, and it is fixed in minutes. Filling the gap
+so the review can carry on turns that into slow, silent rot — the failure does not go away, it goes
+underground. So: no `fix` script, no review.
+
+#### Resolve the pipeline, or stop
+
+Each bash call is its own shell, so the command is written down once, where every later call and the
+report can read it: `$REVIEW_DIR/pipeline.tsv`, the command and the formatters it invokes beside it.
+Nothing is run here — and if there is no `fix` script, this block ends the review instead of returning
+an empty answer for later steps to interpret.
 
 ```bash
-cd "$WORKTREE_PATH" && composer fix 2>&1
+# The one command the review will run, and the formatters it invokes — or a hard stop. Runs nothing.
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
+PIPELINE="$REVIEW_DIR/pipeline.tsv"
+: > "$PIPELINE"
+PR_HEAD_SHA='<PR_HEAD_SHA>'   # its own shell: the refusal names the head it was asked to review
+
+# A formatter is named from the commands the script actually invokes: composer's `@script` references
+# resolve inside composer.json, and a package manager's `run` with a script name resolves in package.json.
+FORMATTER_RE='pint|php-cs-fixer|phpcbf|biome|prettier|eslint|stylelint'
+
+script_body() { # manifest file, script name — one command per line
+  jq -r --arg s "$2" '.scripts[$s] // empty | if type=="array" then .[] else . end' "$1" 2>/dev/null
+}
+
+formatters_of() { # composer script name, recursion depth — the formatters it invokes, de-duplicated
+  local name="$1" depth="${2:-0}" line sub out=""
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    case "$line" in
+      @*) [ "$depth" -lt 4 ] && out+="$(formatters_of "${line#@}" $((depth + 1)))"$'\n' ;;
+      "bun run "*|"npm run "*|"pnpm run "*|"yarn run "*)
+        sub="${line#* run }"; sub="${sub%% *}"
+        out+="$(script_body package.json "$sub" | grep -oE "$FORMATTER_RE")"$'\n' ;;
+      *) out+="$(grep -oE "$FORMATTER_RE" <<<"$line")"$'\n' ;;
+    esac
+  done <<<"$(script_body composer.json "$name")"
+  printf '%s' "$out" | grep -v '^$' | sort -u
+}
+
+if [ -f composer.json ] && jq -e '(.scripts // {}) | has("fix")' composer.json >/dev/null 2>&1; then
+  printf 'composer run-script fix\t%s\n' "$(formatters_of fix | paste -sd, -)" > "$PIPELINE"
+  printf 'pipeline: composer run-script fix — the project declares one code quality pipeline\n'
+else
+  if [ -f composer.json ]; then
+    DECLARED="$(jq -r '.scripts // {} | keys | join(", ")' composer.json 2>/dev/null)"
+    [ -n "$DECLARED" ] || DECLARED="nothing: composer.json has no scripts"
+  else
+    DECLARED="no composer.json in $PWD"
+  fi
+  printf 'HARD STOP — this project declares no `fix` script, so it has no code quality pipeline to run.\n  found: %s\n  expected: a composer.json script named `fix` that runs formatting, linting, tests and type-checks\nFix the project, not the review: the review has no substitute for its pipeline and will not assemble one.\n' "$DECLARED" >&2
+  if [ "${PR_REVIEW_MODE:-present}" = post ]; then
+    jq -nc --arg assertion pipeline \
+      --arg expected 'a composer.json script named fix, running the project code quality pipeline' \
+      --arg actual "$DECLARED" --arg head_sha "$PR_HEAD_SHA" \
+      '{assertion:$assertion,expected:$expected,actual:$actual,head_sha:$head_sha}' > "$REVIEW_DIR/preflight.json"
+    chmod 600 "$REVIEW_DIR/preflight.json"
+  fi
+  exit 3
+fi
 ```
 
-This runs Pint (formatting), Biome (JS/TS linting), Pest (tests), and tsc (type-check) in one shot — the standard Laravel quality pipeline.
+`pipeline.tsv` holds one line — `composer run-script fix` — for the rest of the run, so step 11 re-runs
+that command instead of re-deriving it, and a project cannot redeclare its toolchain mid-review. The
+second column is what lets post mode's finding name a formatter, and it is derived from what `fix`
+invokes rather than guessed from file extensions. A formatter the resolver does not recognise leaves
+the column empty, and that command's rewrites are then **not** claimed as formatting drift: naming the
+command instead would put a `formatting` row into the recurrence query that no formatter reported, and
+calling a regenerated file a format is a worse error than staying quiet about it.
 
-**Interpret the result:**
+#### Present mode: run it, and keep what the formatters changed
 
-| Outcome | Action |
-|---|---|
-| All green, no file changes | Proceed to step 3. Clean baseline confirmed. |
-| All green, but Pint/Biome auto-fixed files | **Commit and push the fixes immediately** — capture the fixer's output (`git status --porcelain` before and after `composer fix`, stage only the files the fixers touched, commit and push) — so the branch starts green *and* the PR contains the code about to be reviewed. Then proceed to step 3. |
+Present mode is where the fixers earn their keep: they make the branch meet its own declared standard,
+and the rewrites are committed and pushed as pre-review sync. Nothing else is staged — the two
+snapshots around the run decide which files those are.
 
-> **Do not use `git add -A`.** Capture `git status --porcelain` before and after `composer fix`, diff the two snapshots, and stage only the files that changed. `git add -A` would sweep unrelated working-tree changes into a commit labelled “style” and push them to the PR. |
-
-**Staging pattern:**
 ```bash
-git status --porcelain > /tmp/before-fix.txt
-composer fix 2>&1
-git status --porcelain > /tmp/after-fix.txt
-# Stage only files the fixers actually touched:
-comm -13 <(sort /tmp/before-fix.txt) <(sort /tmp/after-fix.txt) | awk '{print $2}' | xargs git add
-git commit -m "style: quality pipeline auto-fixes"
-git push origin "$CURRENT_BRANCH"
+# Present mode: run the pipeline and keep what it changed, so the fixers' rewrites can be staged.
+cd "${WORKTREE_PATH:-$PWD}"
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
+[ "${PR_REVIEW_MODE:-present}" = present ] || { echo "pipeline: this is the present-mode block and PR_REVIEW_MODE is $PR_REVIEW_MODE — post mode discards rewrites instead of pushing them" >&2; exit 2; }
+PIPELINE="$REVIEW_DIR/pipeline.tsv"
+[ -s "$PIPELINE" ] || { echo "pipeline: $PIPELINE is missing or empty — the project declares no fix script, which is a hard stop, not a review with nothing to run" >&2; exit 2; }
+rm -f "$REVIEW_DIR/formatting.json"   # post mode's artefact; a stale one would invent a finding here
+
+git status --porcelain > "$REVIEW_DIR/pipeline-before.txt"
+while IFS=$'\t' read -r cmd _formatters; do
+  [ -n "$cmd" ] || continue
+  printf '\n== %s\n' "$cmd"
+  if $cmd 2>&1; then printf '== %s: exit 0\n' "$cmd"; else printf '== %s: exit %s\n' "$cmd" "$?"; fi
+done < "$PIPELINE"
+git status --porcelain > "$REVIEW_DIR/pipeline-after.txt"
+printf '\n== files the pipeline changed:\n'
+comm -13 <(sort "$REVIEW_DIR/pipeline-before.txt") <(sort "$REVIEW_DIR/pipeline-after.txt")
 ```
-| Test failures or type errors | **Stop.** Report the failures to the user. Ask whether to fix them first or proceed with the review knowing the failures pre-exist. Do not proceed silently. |
+
+#### Stage, commit and push what the pipeline rewrote
+
+```bash
+CURRENT_BRANCH='<PR_HEAD>'   # its own shell, and so is this call: the branch is named here
+[ "${PR_REVIEW_MODE:-present}" = present ] || { echo "pipeline: this pushes, so it is present mode's alone; PR_REVIEW_MODE is $PR_REVIEW_MODE" >&2; exit 2; }
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+TOUCHED="$(comm -13 <(sort "$REVIEW_DIR/pipeline-before.txt") <(sort "$REVIEW_DIR/pipeline-after.txt") | awk '{print $2}')"
+if [ -n "$TOUCHED" ]; then
+  printf 'staging the %s file(s) the pipeline rewrote:\n%s\n' "$(grep -c . <<<"$TOUCHED")" "$TOUCHED"
+  printf '%s\n' "$TOUCHED" | xargs -d '\n' -r git add
+  git commit -m "style: quality pipeline auto-fixes"
+  git push origin "$CURRENT_BRANCH"
+else
+  printf 'the pipeline changed nothing — nothing to stage, commit or push\n'
+fi
+```
+
+> **Do not use `git add -A`.** The two snapshots are taken around the run and diffed, so the staged
+> set is the files whose status the pipeline actually changed — a file that was already modified
+> before the run has the same line in both snapshots and is never staged. `git add -A` would sweep
+> unrelated working-tree changes into a commit labelled "style" and push them to the PR.
 
 **Push the auto-fixes before launching the review — do not stop at committing.** A local-only commit means the review validates code the PR does not contain, and GitHub's diff still shows the unformatted version. Pushing mechanical formatting fixes back to the PR branch is normal pre-review sync, not a review change. If the push is rejected (no write access, protected branch), report it and ask whether to continue with the fix committed locally only.
 
@@ -302,6 +540,119 @@ git push origin "$CURRENT_BRANCH"
 ```bash
 git diff $(git merge-base HEAD origin/master)..HEAD --stat
 ```
+
+#### Post mode: run it, then discard every rewrite
+
+`post` mode never commits, and "never pushes" is the weaker half of that: the fixers' rewrites must
+not survive the run either. The author's tree is not the review's to edit, and a reformat left in it
+would be a change nobody authorised, made by a process with nobody reading it. So the pipeline still
+runs — the baseline is the baseline in both modes — the rewrites are discarded, and the drift they
+represented becomes a finding instead of a silent prose line.
+
+```bash
+# Post mode: run the pipeline, then put the tree back exactly as it arrived. Nothing is staged,
+# committed or pushed; the rewrites become a finding instead.
+cd "${WORKTREE_PATH:-$PWD}"
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
+[ "${PR_REVIEW_MODE:-present}" = post ] || { echo "pipeline: this is the post-mode block and PR_REVIEW_MODE is ${PR_REVIEW_MODE:-present} — refusing to discard rewrites the other mode has to keep" >&2; exit 2; }
+PIPELINE="$REVIEW_DIR/pipeline.tsv"
+ARTEFACT="$REVIEW_DIR/formatting.json"
+[ -s "$PIPELINE" ] || { echo "pipeline: $PIPELINE is missing or empty — the project declares no fix script, which is a hard stop, not a review with nothing to run" >&2; exit 2; }
+RUNS="$REVIEW_DIR/pipeline-runs.jsonl"
+: > "$RUNS" && rm -f "$ARTEFACT"
+
+# Exit 4, not 3: nothing was reviewed and no preflight.json was written, so a caller must not go
+# looking for one. 3 means an assertion about the workspace failed and the file says which.
+DIRT="$(git status --porcelain)"
+[ -z "$DIRT" ] || { printf 'pipeline: refused — the tree was not clean, so nothing a formatter rewrites could be told apart from it:\n%s\n' "$DIRT" >&2; exit 4; }
+
+while IFS=$'\t' read -r cmd formatters; do
+  [ -n "$cmd" ] || continue
+  printf '\n== %s\n' "$cmd"
+  if $cmd 2>&1; then status=0; else status=$?; fi
+  changed="$(sort -u <<<"$(git diff --name-only; git diff --cached --name-only)" | grep -v '^$')"
+  files=$(grep -c . <<<"$changed")
+  git reset -q --hard HEAD            # the rewrite is discarded here, before anything reads the tree
+  jq -nc --arg command "$cmd" --argjson exit "$status" --argjson files "$files" \
+    --arg formatters "$formatters" --arg paths "$changed" \
+    '{command:$command,exit:$exit,files:$files,
+      formatters:($formatters|split(",")|map(select(.!=""))),
+      paths:($paths|split("\n")|map(select(.!="")))}' >> "$RUNS"
+  printf '== %s: exit %s, %s file(s) discarded\n' "$cmd" "$status" "$files"
+done < "$PIPELINE"
+
+# One artefact for the whole run — the report and the record both read it, so neither can disagree
+# with the other about what the formatters wanted. Only commands that name a formatter contribute:
+# files are counted once each, not once per command, because two scripts running the same formatter
+# on one file is one file. A command that changed tracked files and names no formatter is recorded
+# in `runs` and claimed as nothing.
+jq -s '(map(select((.formatters|length) > 0))) as $f
+      | {mode:"post",
+         files:($f|map(.paths)|add // [] | unique | length),
+         paths:($f|map(.paths)|add // [] | unique),
+         formatters:($f|map(select(.files > 0))|map(.formatters)|add // [] | unique),
+         runs:.}' "$RUNS" > "$ARTEFACT"
+chmod 600 "$ARTEFACT" && rm -f "$RUNS"
+
+STILL="$(git diff --name-only; git diff --cached --name-only)"
+[ -z "$STILL" ] || { printf 'pipeline: the tree did not come back to HEAD — the review would judge a dirty tree:\n%s\n' "$STILL" >&2; exit 4; }
+
+# A formatter rewrites files; a build script makes new ones, and those are already ignored or were
+# there before. Say what is left, so "byte-identical" is a claim about the tracked tree and the
+# reader can see the difference rather than taking it on trust.
+UNTRACKED="$(git status --porcelain | grep '^??' || true)"
+[ -z "$UNTRACKED" ] || printf 'pipeline: the run left untracked files — build output, not drift, and left in place:\n%s\n' "$UNTRACKED"
+
+UNNAMED=$(jq -r '[.runs[] | select((.formatters|length) == 0 and .files > 0) | .command] | join(", ")' "$ARTEFACT")
+[ -z "$UNNAMED" ] || printf 'pipeline: %s changed tracked files and names no recognised formatter — discarded, and not claimed as formatting drift\n' "$UNNAMED"
+
+FILES=$(jq -r .files "$ARTEFACT")
+if [ "$FILES" -gt 0 ]; then
+  printf 'formatting: %s file(s) would be rewritten by %s — rewrites discarded, so this becomes a minor `formatting` finding\n' \
+    "$FILES" "$(jq -r '.formatters|join(", ")' "$ARTEFACT")"
+else
+  printf 'formatting: no formatter drift, and the tracked tree is back at HEAD — no `formatting` finding\n'
+fi
+```
+
+**Read `formatting.json` and carry one finding — or none.** `files` is how many tracked files a
+formatter would rewrite — counted once each, not once per invocation, so a `fix` script that runs
+the same formatter twice over one file still reports one file — `paths` are those files, `formatters` the tools whose
+runs changed something, and `runs` every command with its exit status and what it touched. When
+`files` is zero there is no finding: a clean tree is a clean tree, and inventing a formatting note
+for it is noise. When it is greater than zero the review carries exactly one finding — one for the
+drift, never one per file:
+
+> ❔ [Inline fix] `formatting` — the project's declared formatters (`pint`) would rewrite 7 files:
+> `app/Foo.php`, `app/Bar.php`, … The branch does not meet the project's own formatting standard;
+> running the pipeline and committing the result closes it.
+
+Minor severity because `standards.md` names formatting as a minor: no judgement is needed, and the
+`formatting` label is in its vocabulary precisely so the recurrence is countable. The bucket is
+`Inline fix` — the remedy is a formatter run, not a decision — and in this mode it is advice to the
+author, because the review itself never acts. Present mode never raises this finding: there the
+drift was fixed and pushed, and the label's absence is information too.
+
+#### Say what ran
+
+Both modes print the command and its exit status, and the report carries one line naming it —
+`Baseline: composer run-script fix — exit 0` — beside the legend at the top (step 6). This is what
+lets a reader of the review tell "green" from "never checked": the report names the pipeline that
+actually ran, and a project that has none never reaches the report at all.
+
+**Interpret the result:**
+
+| Outcome | Action |
+|---|---|
+| Every command exits 0 | Proceed to step 3. In present mode, whatever the pipeline rewrote has been staged, committed and pushed first. |
+| Every command exits 0, and post mode reports formatter drift | Proceed to step 3, carrying the `formatting` finding above into the report. The tree is already back at HEAD. |
+| A command exits non-zero | **Stop.** Report the failing command and its output to the user. Ask whether to fix the failure first or proceed with the review knowing it pre-exists. Do not proceed silently. |
+| The project declares no `fix` script | **Stop** — the resolution block already did, with exit 3 and a `preflight.json` naming assertion `pipeline` in post mode. Nothing to review against is not a review with fewer checks. |
+| The post-mode block refuses (exit 4): a dirty tree, or one that did not return to HEAD | **Stop.** Nothing was reviewed, nothing is claimed, and no `preflight.json` exists — exit 4 is that case, and exit 3 always means an assertion wrote one. A tree that was dirty before the run contradicts preflight's assertion 5, so the workspace is wrong rather than the PR. |
+
+**In post mode nothing is installed.** Dependencies are the caller's, and preflight assertion 6 has already failed the run if they are absent, so a build that cannot run here is reported and stop — the caller provisions. Installing would put this run's workspace under the review's own hand, which is exactly what the caller's provisioning exists to prevent.
 
 > **Tip:** If you're unsure why we run the pipeline before reviewing, or what to do with the results, check `guide.md` for the rationale.
 
@@ -339,12 +690,13 @@ Extract a compact summary: title, description, file list (path + additions + del
 **Write the shared context file** — one file both children read, so task strings stay short and the two legs work from identical input:
 
 ```bash
-REVIEW_DIR="${XDG_RUNTIME_DIR}/pr-review/$number"
-mkdir -p "$REVIEW_DIR"
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
 CTX_FILE="$REVIEW_DIR/context.md"
 ```
 
-It contains: PR number/repo, title, description, file manifest, commit list, base/head branches, the review workspace path, **the full previous review history** (all prior review bodies and inline comments including change requests), **and the whole discussion thread in chronological order** — every comment with its author, timestamp and body. The thread is where the author answers the review, so a round cannot reconcile change requests without it.
+It contains: PR number/repo, title, description, file manifest, commit list, base/head branches, the review workspace path, **the baseline the code quality pipeline produced** — that `composer run-script fix` ran, and what it exited with, and in post mode the formatter drift the run found, since a leg that repeats that drift is a duplicate finding rather than a second opinion — **the full previous review history** (all prior review bodies and inline comments including change requests), **and the whole discussion thread in chronological order** — every comment with its author, timestamp and body. The thread is where the author answers the review, so a round cannot reconcile change requests without it.
 
 ### 4. Launch reviewer and oracle in parallel
 
@@ -368,7 +720,7 @@ Do not block. Keep responding to the user. The two children are yours: check `su
 
 Merge the two reports into one structured document:
 
-1. **Standards** — from the reviewer's Standards findings
+1. **Standards** — from the reviewer's Standards findings, plus post mode's `formatting` finding when the baseline pipeline reported drift (step 2.5; present mode never raises it)
 2. **Spec Fidelity** — from the reviewer's Spec findings
 3. **Pattern Consistency** — from the oracle's pattern/architecture findings
 4. **Authorisation & Scoping** — from the oracle's auth findings
@@ -377,7 +729,7 @@ Merge the two reports into one structured document:
 7. **Tests to add** — the tests the production-code findings call for, red-first where the code is currently wrong
 8. **Most actionable before merge** — your own prioritised list
 
-**Glyph vocabulary — one meaning each.** `🔴` blocker, `🟡` warning, `❔` minor, for findings that are still open; `✅` for fixed this round or verified correct, with the severity dropped; `⚠️` for reversal notes only. `🟢` is never a finding marker — it appears only in the Bottom line verdict, where green means "no problem, go". The red X is reserved for follow-up reviews and means *you were asked for this and did not fix it*: write it after the severity of a previously-requested item that is still open (`🔴❌`, `🟡❌`, `❔❌`), never on a new finding and never in an initial review. Open the report with the legend on one line so the code is self-describing, and name the three buckets beside it — `Inline fix`, `Issue`, `Decision` (step 10). Findings carry their bucket as a bracketed tag after the severity glyph, e.g. `❔ [Inline fix] …`, and the buckets are presented as separate groups in step 10's order, never interleaved. The bucket labels are words rather than glyphs, so the glyph vocabulary above stays one-meaning-each.
+**Glyph vocabulary — one meaning each.** `🔴` blocker, `🟡` warning, `❔` minor, for findings that are still open; `✅` for fixed this round or verified correct, with the severity dropped; `⚠️` for reversal notes only; `🟢` is never a finding marker — it appears only in the Bottom line verdict, where green means "no problem, go". The red X is reserved for follow-up reviews and means *you were asked for this and did not fix it*: write it after the severity of a previously-requested item that is still open (`🔴❌`, `🟡❌`, `❔❌`), never on a new finding and never in an initial review. Open the report with the legend on one line so the code is self-describing, and name the three buckets beside it — `Inline fix`, `Issue`, `Decision` (step 10). **The line under the legend is the baseline line** — the commands that actually ran and what each exited with (step 2.5) — because a reader who cannot see which scripts ran cannot tell "green" from "never checked". Findings carry their bucket as a bracketed tag after the severity glyph, e.g. `❔ [Inline fix] …`, and the buckets are presented as separate groups in step 10's order, never interleaved. The bucket labels are words rather than glyphs, so the glyph vocabulary above stays one-meaning-each.
 
 **Never write a bare number for a GitHub artefact.** Issues and pull requests share one numbering sequence per repository, so `#221` is ambiguous by construction and a reader cannot resolve it. Write `PR #221` or `issue #223` everywhere — headings, tables, prose, and anything that will be posted (review bodies, PR comments, issue bodies, commit messages). The prefix is required even when the surrounding context seems to make it obvious, because these lines are usually skimmed in isolation.
 
@@ -426,10 +778,16 @@ Remove all internal process references from the report before presenting: no "re
 ### 9. Write the report to a file
 
 ```bash
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+mkdir -p "$REVIEW_DIR" && chmod 700 "$REVIEW_DIR"
 REPORT_FILE="$REVIEW_DIR/report.md"
+: > "$REPORT_FILE" && chmod 600 "$REPORT_FILE"   # created empty and owner-only, then filled
 ```
 
-Write the sanitised report there. The file lives in the review workspace and survives for follow-up questions.
+Write the sanitised report into that file — it is already mode 600, and truncating it does not change
+the mode, so the report never exists readable by another account even for a moment. The file lives in
+the review workspace and survives for follow-up questions.
 
 ### 9.5. Split times
 
@@ -442,6 +800,9 @@ Derive them from the stamps emitted in step 0. Those values are epoch **millisec
 differences are already milliseconds:
 
 ```bash
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+SPLITS="${SPLITS:-$REVIEW_DIR/splits.tsv}"   # a caller that already has the path may pass it in
 declare -A S
 while IFS=$'\t' read -r k v; do S[$k]=$v; done < "$SPLITS"
 
@@ -499,6 +860,9 @@ and the only way a recurring finding can ever be spotted. The RAM-disk report is
 ephemeral; the log is deliberately not.
 
 ```bash
+MODE="${PR_REVIEW_MODE:-present}"     # its own shell: the mode is read again, not remembered
+PR_HEAD_SHA='<PR_HEAD_SHA>'           # and so is the head this review was for
+TIMING='<paste the object step 9.5 produced>'   # one object, not a reconstruction
 REVIEW_LOG="${REVIEW_LOG:-$HOME/.pi/agent/state/reviews.jsonl}"
 mkdir -p "$(dirname "$REVIEW_LOG")"
 printf '%s\n' "$(jq -nc \
@@ -521,6 +885,9 @@ printf '%s\n' "$(jq -nc \
 - `labels` is the de-duplicated set of labels from `standards.md` that this review actually raised.
   A fixed vocabulary makes recurrence a `GROUP BY`, not a text search:
   `jq -r .labels[] "$REVIEW_LOG" | sort | uniq -c | sort -rn`.
+ A `formatting` finding from the
+  baseline pipeline (step 2.5) belongs in this set like any other, and it is the reason the label
+  exists: twelve reviews carrying `formatting` is one missing formatter run, not twelve defects.
 - `disposition` counts the findings in each bucket from step 10, so the log can answer how much
   work a review deferred rather than only how many findings it raised:
   `jq -s '{inline:(map(.disposition.inline // 0)|add), issue:(map(.disposition.issue // 0)|add), decision:(map(.disposition.decision // 0)|add)}' "$REVIEW_LOG"`.
@@ -596,35 +963,22 @@ Then:
 
 **In `post` mode**, there is nobody to authorise anything, so the buckets are structure for the comment and nothing more. State the disposition line as a recommendation — `Recommended disposition: Inline fix: 7 (~2h) · Issue: 3 · Decision: 0` — and never ask. Fixing is off the table (see Mode), so the line reads as advice to the author, not as a question.
 
-### 11. Run quality pipeline on your changes (only if inline fixes were applied)
+### 11. Run the code quality pipeline on your changes (only if inline fixes were applied)
 
 **`post` mode never fixes anything, so this step and step 11.5 are skipped entirely.** There are no changes of its own to pipeline, no commits to push, and no red-first ordering to honour — the review reports and stops. Reading them is still worth it: they are the standard the comment asks the author to meet.
 
-After any inline fixes are committed, run the pipeline again to catch auto-fixes your changes introduced:
-
-```bash
-cd "$WORKTREE_PATH" && composer fix 2>&1
-```
+After any inline fixes are committed, run the pipeline again to catch auto-fixes your changes introduced. **Re-run step 2.5's blocks — the Present mode run block, then Stage, commit and push — and do not resolve again.** The project's declaration has not changed, and the two blocks re-derive `REVIEW_DIR` and `PIPELINE` themselves, which is all a second shell needs; copying the loop here would be a second copy of the rule that has to be kept in step with the first. The snapshots are re-taken by the run block, so the stage block stages exactly what this run rewrote.
 
 | Outcome | Action |
 |---|---|
-| All green, no file changes | Proceed to push. |
-| All green, but Pint/Biome auto-fixed files | **Commit the fixes immediately** — capture the fixer's output (`git status --porcelain` before and after `composer fix`, stage only the files the fixers touched), commit, and proceed to push. |
-
-> **Do not use `git add -A`.** Same rule as step 2.5: stage only the files `composer fix` changed.
->
-> ```bash
-> git status --porcelain > /tmp/before-fix.txt
-> composer fix 2>&1
-> git status --porcelain > /tmp/after-fix.txt
-> comm -13 <(sort /tmp/before-fix.txt) <(sort /tmp/after-fix.txt) | awk '{print $2}' | xargs git add
-> git commit -m "style: quality pipeline auto-fixes"
-> ```
-| Test failures or type errors caused by your fixes | **Revert your changes.** Do not post broken code. Report the failure to the user. |
+| Every command exits 0, no files changed | Proceed to push. |
+| Every command exits 0, but the fixers rewrote files | Stage, commit and push through step 2.5's block — it stages only what the pipeline touched — then proceed. |
+| A command fails because of your fixes | **Revert your changes.** Do not post broken code. Report the failure to the user. |
 
 **Push all commits before presenting.** Baseline auto-fixes from step 2.5 were already pushed before the review launched; this covers commits made after it. After any inline fixes (and auto-fixes) are committed, push immediately:
 
 ```bash
+CURRENT_BRANCH='<PR_HEAD>'   # its own shell again: set the branch this pushes
 git push origin "$CURRENT_BRANCH"
 ```
 
@@ -632,7 +986,7 @@ git push origin "$CURRENT_BRANCH"
 
 **If the push is rejected as non-fast-forward, or you find a local merge commit under your work, reset — never rebase.** A rebase rewrites commits, and the moment one of them is on the remote it needs a force push to land. Step 2a drops its merge commit precisely so this cannot arise; if it does anyway, get your work back onto the PR head without rewriting anything: `git reset --hard origin/"$PR_HEAD"` and cherry-pick your commits from a backup branch (a cherry-pick creates new commits, so nothing on the remote is rewritten). Never `git push --force`, and never rebase a commit that is already on the remote — merge instead.
 
-> **Same rule applies after the review is posted.** If the user asks you to fix findings on the PR branch later, treat every `composer fix` run the same way: check `git diff` for auto-fixed files, commit them, and push before declaring the task done. The pipeline discipline does not stop at step 13.
+> **Same rule applies after the review is posted.** If the user asks you to fix findings on the PR branch later, treat every pipeline run the same way: check `git diff` for auto-fixed files, commit them, and push before declaring the task done. The pipeline discipline does not stop at step 13.
 
 ### 11.5. Red first — fixing a production-code finding
 
@@ -692,6 +1046,9 @@ Determine the review state from the report's Bottom line, then post.
 **`present` mode** — a human has read it and said post, so the verdict is theirs too:
 
 ```bash
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+REPORT_FILE="$REVIEW_DIR/report.md"
 if grep -q '🟢 \*\*APPROVE\*\*' "$REPORT_FILE"; then
   REVIEW_STATE="--approve"
 else
@@ -703,8 +1060,12 @@ gh pr review <number> --repo <owner/repo> $REVIEW_STATE --body-file "$REPORT_FIL
 **`post` mode** — a comment, never `--approve` and never `--request-changes`. An automated first pass has not earned a verdict on someone's merge, and a review that blocks a merge with nobody standing behind it is worse than a comment the author can read and judge:
 
 ```bash
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+REPORT_FILE="$REVIEW_DIR/report.md"
+PR_HEAD_SHA='<PR_HEAD_SHA>'   # its own shell: the marker names the sha this comment belongs to
 MARKER="<!-- pr-review:${PR_HEAD_SHA} -->"
-COMMENT_FILE="$RUN_DIR/comment.md"
+COMMENT_FILE="$REVIEW_DIR/comment.md"
 {
   printf '%s\n\n' '**Automated review — not a final review.** This is an automated first pass, posted while no reviewer was available to read it beforehand. It is a comment: it is not an approval and not a request for changes, and it neither blocks nor unblocks the merge. Expect a human follow-up; treat the findings as a starting point.'
   cat "$REPORT_FILE"
@@ -749,7 +1110,7 @@ Verify the comment is visible on the PR before moving on.
 
 When the user says "clean up review <number>": **only when the PR has been merged or closed.** If the PR is still open, remind them the report and context file are active reference material and suggest waiting.
 
-- Delete `${XDG_RUNTIME_DIR}/pr-review/$number/` (review artifacts directory)
+- Delete `${XDG_RUNTIME_DIR}/pr-review/<owner>-<repo>/<number>/` (review artefacts directory)
 - If the user created a worktree for this review, ask them whether to remove it — do not remove it yourself
 
 ### 16. Follow-up questions
@@ -757,10 +1118,11 @@ When the user says "clean up review <number>": **only when the PR has been merge
 **Re-check the workspace before you trust any read of it.** The review directory is a shared worktree, deliberately reused across reviews, and it gets switched to other branches between sessions. A session that ended on the PR branch can reopen on a different one, and every `git` or `grep` result then describes the wrong tree. A `grep` for a symbol the PR added returns nothing on a branch that never had it — which reads exactly like the author having fixed it. The failure is silent and confident, so it survives scrutiny: this has already produced a near-miss, where a ledger correct in every other respect was one command away from being posted about the wrong branch.
 
 ```bash
-cd "$WORKTREE_PATH"
+PR_HEAD='<PR_HEAD>'                  # its own shell again
+cd "${WORKTREE_PATH:-$PWD}"          # post mode sets no WORKTREE_PATH: the worktree is the cwd
 git fetch origin "$PR_HEAD"
-git branch --show-current   # must equal PR_HEAD
-git rev-parse HEAD          # must equal the PR head SHA, not an earlier reviewed commit
+git branch --show-current   # must equal PR_HEAD, or be empty where the worktree was added detached
+git rev-parse HEAD          # must equal the head recorded for this review, not an earlier commit
 git status --porcelain      # must be empty before any read is trusted
 ```
 
