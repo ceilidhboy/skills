@@ -82,7 +82,12 @@ test` is not a defined command, the worktree's `vendor/` is stale against its ow
 `composer.lock` — run `composer install` there first.
 
 If a merge genuinely conflicts in files the feature branch does not own, stop and ask the
-operator rather than resolving their divergence for them.
+operator rather than resolving their divergence for them. One case decides how to proceed: **a
+feature branch carries the base branch with it**, so the merge can conflict in files the PR
+never touched — the preview branch's own implementation of the same work. Either merge the
+base branch into the preview branch first and resolve that once, or, when the PR's own commits
+are independent of the divergence (docs, `.ai/`), `git cherry-pick -x` them instead of merging
+the branch.
 
 If the project has no preview branches, skip this step — but check the project's `AGENTS.md`
 first, because its rules override this one.
