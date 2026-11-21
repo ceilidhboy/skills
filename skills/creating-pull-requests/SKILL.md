@@ -2,8 +2,8 @@
 name: creating-pull-requests
 description: Company pull request workflow and branch policy. Use when user says "create a PR", "make a pull request", "open a PR", or when managing GitHub pull requests for company projects.
 author: Mike Scott
-version: '1.1.4'
-updated: '2026-11-08'
+version: '1.2.0'
+updated: '2026-11-21'
 ---
 
 # Creating Pull Requests
@@ -50,6 +50,42 @@ NEVER PR into develop
      --body '<summary of changes>'
    ```
 4. Verify the PR was created successfully (check the URL)
+5. **Merge the same branch into the preview branches too** — see below
+
+### After the PR is open: merge into the preview branches
+
+A PR is how work reaches `master`. It is not how colleagues and the client see it while it is
+being reviewed. Every branch that has a PR is also merged into the project's preview branches,
+because those are the branches people actually click through.
+
+For House of Smith that is **`develop`** (internal, the team's sandbox for testing a change
+alongside everything else) and **`staging`** (what Kelly sees; she does not see `develop`).
+
+```bash
+git switch <feature-branch>
+git pull --ff-only
+
+# in each preview branch's worktree, matching the existing history style
+git reset --hard origin/<preview-branch>   # a stale local copy invents conflicts
+npm run build                              # a stale public/build fails any Vite-rendered test
+php artisan test --compact                 # prove it before pushing: this is a human-facing branch
+git merge --no-ff <feature-branch> -m "Merge branch '<feature-branch>' into <preview-branch>"
+git push origin <preview-branch>
+```
+
+Two traps, both hit in practice:
+
+- **A preview branch that is far behind its remote produces conflicts the remote does not
+  have.** Reset to `origin/<preview-branch>` first, then merge; the conflicts usually vanish.
+- **`php artisan test` needs a current `node_modules`/`vendor` for that worktree.** If `artisan
+test` is not a defined command, the worktree's `vendor/` is stale against its own
+`composer.lock` — run `composer install` there first.
+
+If a merge genuinely conflicts in files the feature branch does not own, stop and ask the
+operator rather than resolving their divergence for them.
+
+If the project has no preview branches, skip this step — but check the project's `AGENTS.md`
+first, because its rules override this one.
 
 ### What to include in the PR body
 
