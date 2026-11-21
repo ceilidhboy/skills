@@ -61,6 +61,14 @@ because those are the branches people actually click through.
 For House of Smith that is **`develop`** (internal, the team's sandbox for testing a change
 alongside everything else) and **`staging`** (what Kelly sees; she does not see `develop`).
 
+**Read the project's own rules before pushing anything.** House of Smith currently narrows
+this step (`.ai/guidelines/branch-merges.md`): commit the merge into local `develop`, hand
+over for the operator to test there, then merge into local `staging`, hand over again, and
+push only on their word. Close the preview-branch work the way the project says, and where the
+project is silent, prefer committing locally and asking before you push.
+
+When the project does want the merge pushed straight away:
+
 ```bash
 git switch <feature-branch>
 git pull --ff-only
@@ -68,26 +76,26 @@ git pull --ff-only
 # in each preview branch's worktree, matching the existing history style
 git reset --hard origin/<preview-branch>   # a stale local copy invents conflicts
 npm run build                              # a stale public/build fails any Vite-rendered test
-php artisan test --compact                 # prove it before pushing: this is a human-facing branch
+php artisan test --compact                 # this branch is human-facing, so prove it
 git merge --no-ff <feature-branch> -m "Merge branch '<feature-branch>' into <preview-branch>"
 git push origin <preview-branch>
 ```
 
-Two traps, both hit in practice:
+Three traps, all hit in practice:
 
 - **A preview branch that is far behind its remote produces conflicts the remote does not
   have.** Reset to `origin/<preview-branch>` first, then merge; the conflicts usually vanish.
 - **`php artisan test` needs a current `node_modules`/`vendor` for that worktree.** If `artisan
 test` is not a defined command, the worktree's `vendor/` is stale against its own
 `composer.lock` — run `composer install` there first.
+- **A feature branch carries its base branch with it**, so the merge can conflict in files the
+  PR never touched — the preview branch's own implementation of the same work. Either merge
+  the base branch into the preview branch first and resolve that once, or, when the PR's own
+  commits are independent of the divergence (docs, `.ai/`), `git cherry-pick -x` them instead
+  of merging the branch.
 
 If a merge genuinely conflicts in files the feature branch does not own, stop and ask the
-operator rather than resolving their divergence for them. One case decides how to proceed: **a
-feature branch carries the base branch with it**, so the merge can conflict in files the PR
-never touched — the preview branch's own implementation of the same work. Either merge the
-base branch into the preview branch first and resolve that once, or, when the PR's own commits
-are independent of the divergence (docs, `.ai/`), `git cherry-pick -x` them instead of merging
-the branch.
+operator rather than resolving their divergence for them.
 
 If the project has no preview branches, skip this step — but check the project's `AGENTS.md`
 first, because its rules override this one.
