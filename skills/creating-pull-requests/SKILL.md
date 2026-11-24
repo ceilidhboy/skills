@@ -2,8 +2,8 @@
 name: creating-pull-requests
 description: Company pull request workflow and branch policy. Use when user says "create a PR", "make a pull request", "open a PR", or when managing GitHub pull requests for company projects.
 author: Mike Scott
-version: '1.2.0'
-updated: '2026-11-21'
+version: '1.3.0'
+updated: '2026-11-24'
 ---
 
 # Creating Pull Requests
@@ -11,12 +11,44 @@ updated: '2026-11-21'
 ## Branch Policy
 
 ```
-feature branches ──→ develop (merge for testing/preview)
 feature branches ──→ master  (via PR, when signed off)
+feature branches ──→ saga/*  (via PR, when the project assembles one feature)
+feature branches ──→ develop (merge for testing/preview)
 
 NEVER develop ──→ master
 NEVER PR into develop
 ```
+
+### The base: where a ticket branch is cut from
+
+A ticket branch is cut from **`master`**, from a **`saga/*`** branch, or from a branch that was
+itself cut under this rule (a stack). Nothing else is a base.
+
+`master` is the default base, and the default destination. Two things move it:
+
+- **A project rule names another base.** Look for one in the repo *before* cutting — `.ai/`,
+  `AGENTS.md`, `CONTRIBUTING.md`, `CONTRIBUTING/`, and whether a `saga/` branch already exists.
+  Quote what you found, with its path, in the PR body. A saga branch that exists *is* the
+  project rule, even when no file says so.
+- **The work genuinely depends on unmerged work.** Then stack: cut from the parent branch and
+  name the parent's PR number in the PR body. A stack with no open parent PR is just a branch
+  cut from the wrong place.
+
+Every PR body carries one line naming its base and why:
+
+    Base: master
+    Base: saga/126-partner-feeds — .ai/guidelines/branch-merges.md
+    Base: feat/128-published-property-visibility (stacked, PR #151)
+
+**Search first, then declare, then cut.** Choosing the base because the worktree happened to be
+on that branch is how a ticket gets cut from the wrong place: the choice stays invisible until
+the conflicts arrive, and `Closes #n` never fires when a ticket PR targets a saga instead of the
+default branch.
+
+**Not a base, however convenient:** `develop`, `staging`, any other release branch, a
+colleague's in-progress branch, a tag, and above all nothing picked "because it avoided a
+rebase conflict". When the dependency is one or two commits, `git cherry-pick -x` them onto a
+fresh branch cut from the real base instead of stacking.
 
 ### Branch roles
 
@@ -25,12 +57,13 @@ NEVER PR into develop
 | `develop` | Sandbox / WIP / experimental. Non-technical staff preview work here. | ✅ Yes — recreate from `master` if broken | ❌ Never — merge directly |
 | `master` | Production. Only clean, signed-off code. | ❌ No | ✅ Yes — from feature branches only |
 | `staging` (if exists) | Pre-production gate. Final testing before release. | Conditional | ✅ From feature branches |
+| `saga/<n>-<name>` (if exists) | One multi-PR feature assembled before it lands on `master`. Ticket PRs target it. | ✅ Yes — deleted once it has landed on `master` | ✅ Yes — from ticket branches only |
 
 ### Non-negotiable rules
 
 - **Never create a PR from `develop` to `master`.** `develop` may contain half-baked or abandoned work. A PR from `develop` risks merging experimental code into production.
 - **Never create a PR into `develop`.** Merging directly is faster and keeps `develop` a simple sandbox. If it breaks, recreate from `master`.
-- **Always PR from a clean feature branch into `master`.** The feature branch should contain only the work for that specific feature or fix.
+- **Always PR from a clean feature branch into `master`**, or into the project's `saga/*` branch when it has one. The feature branch contains only the work for that specific feature or fix, and is cut from `master`, a saga branch, or a stack on one of those — see [The base](#the-base-where-a-ticket-branch-is-cut-from).
 - **`develop` is disposable.** If `develop` gets into a bad state, drop it and create a fresh one from `master`.
 
 ### The reasoning
@@ -39,9 +72,9 @@ NEVER PR into develop
 
 ## How to Create a PR
 
-1. Identify the correct feature branch (e.g. `feat/my-feature` or `fix/my-bugfix`)
+1. Identify the correct feature branch (e.g. `feat/my-feature` or `fix/my-bugfix`), and check it was cut from the right base — see [The base](#the-base-where-a-ticket-branch-is-cut-from)
 2. Ensure the branch is pushed to GitHub
-3. Create the PR targeting `master`:
+3. Create the PR, passing the base you named in the PR body — `master` unless the project says otherwise:
    ```bash
    gh pr create \
      --base master \
@@ -54,9 +87,7 @@ NEVER PR into develop
 
 ### After the PR is open: merge into the preview branches
 
-A PR is how work reaches `master`. It is not how colleagues and the client see it while it is
-being reviewed. Every branch that has a PR is also merged into the project's preview branches,
-because those are the branches people actually click through.
+A PR is how work reaches `master` — through the project's `saga/*` branch first, when it assembles one feature across several PRs. It is not how colleagues and the client see it while it is being reviewed. Every branch that has a PR is also merged into the project's preview branches, because those are the branches people actually click through.
 
 For House of Smith that is **`develop`** (internal, the team's sandbox for testing a change
 alongside everything else) and **`staging`** (what Kelly sees; she does not see `develop`).
@@ -102,6 +133,7 @@ first, because its rules override this one.
 
 ### What to include in the PR body
 
+- **Base:** the branch you cut from and why (`Base: master`, or `Base: saga/126-partner-feeds — .ai/guidelines/branch-merges.md`, or `Base: feat/x (stacked, PR #151)`)
 - Summary of changes (what and why)
 - Key technical decisions
 - Testing notes (what was tested, how)
@@ -145,6 +177,7 @@ Rules that hold either way:
 | Mistake | Why it's wrong | Correct approach |
 |---------|---------------|------------------|
 | PR from `develop` → `master` | May include unfinished/abandoned work | PR from clean feature branch |
+| Cutting from `master` when the project has a `saga/*` branch, or stacking with no parent PR | The base stays invisible until the conflicts arrive, and `Closes #n` never fires against a saga | Name the base in the PR body, quote the project rule, name the parent PR |
 | PR into `develop` | Adds unnecessary process to a sandbox | Merge directly into `develop` |
 | Including multiple features in one PR | Hard to review, hard to roll back | One feature per PR |
 | Closing a PR without a comment | The reason is lost, and it looks arbitrary later | Comment why, and where the work went instead |
