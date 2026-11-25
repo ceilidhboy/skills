@@ -95,6 +95,12 @@ No gate: post the review as a comment and stop. Advisory — never an approval, 
 changes, and never a change to the code.
 _Avoid_: auto mode, headless mode, unattended mode, silent mode
 
+**Comment review**:
+A review posted with `gh pr review --comment`, carrying no verdict state. It is what a self-authored
+pull request gets, because GitHub refuses approve and request-changes on your own PR — the verdict
+lives in the Bottom line and a banner says why the state is absent.
+_Avoid_: self-review, comment mode, plain comment
+
 ### The record
 
 **Review record**:

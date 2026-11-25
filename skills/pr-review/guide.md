@@ -24,6 +24,7 @@ This file contains hard-won lessons and rationale for the PR review workflow. Re
 - **The merge probe asserts `refs/remotes/origin/<head>` before it merges.** A worktree added at a sha has no local branch and need not have the remote-tracking ref, and the reset that discards the merge needs it. Without the assertion the failure lands after the merge, with a merge commit on disk that has to be undone before anything else can be understood.
 - **Artefacts are per repository, per pull request, and `XDG_RUNTIME_DIR` is mandatory.** `${XDG_RUNTIME_DIR}/pr-review/<owner>-<repo>/<number>/`, directory mode 700, report mode 600. There is no `/tmp` fallback: `/tmp` is world-readable, and a report names a repository's vulnerabilities. A queue runs several repos at once, so `pr-review/44` is ambiguous the moment two repos both have a PR #44 — hence the owner-repo segment in the path itself.
 - **In post mode the skill provisions nothing, and keeps nothing it changed.** No worktree, no `composer install`, no build that installs — and every tracked rewrite its own baseline run produces is discarded before anything reads the tree, because a change left behind is one nobody authorised and nobody reviewed. Untracked files a build script creates are the exception, and the run names them: a formatter rewrites files, a build makes new ones, and deleting build output would break the very type-check the baseline is about. The caller owns the workspace, the dependencies are asserted present, and the one thing the review must never do is quietly rebuild the tree it is judging.
+- **On your own pull request you can post no verdict at all, so check the author first and post a comment review instead.** GitHub refuses `--approve` and `--request-changes` when the authenticated user is the PR author (`GraphQL: Review Can not request changes on your own pull request`). In a solo repository that is not an edge case — it is every review of the operator's own work, so a skill that only branches on the Bottom line discovers the restriction from a failed API call *after* a human has approved posting. Compare `gh api user --jq .login` with the PR author before the mode branch, post as `--comment`, keep the verdict in the Bottom line, and say in a banner line that no state was set. The state is what changes; the obligations do not — an APPROVE verdict still needs step 14's issues filed before it goes out, and warnings still read as the request for changes they are.
 
 ## Why we do things this way
 
@@ -177,6 +178,16 @@ Two consequences follow, and both are deliberate:
 
 The report names a repository's vulnerabilities: unauthenticated endpoints, injection risks, missing authorisation. On a box that runs several reviews for several repos, and on a runtime directory that may be shared with other sessions, "readable by whoever is logged in" is the wrong default. The directory is 700 and the report 600, which also means a copied artefact keeps that protection only if it is copied with `-p` — callers that move reports elsewhere own that decision.
 
+### Why a self-authored PR gets a comment review instead of a verdict
+
+GitHub will not let an author approve or request changes on their own pull request. The API says so plainly — `GraphQL: Review Can not request changes on your own pull request` — and the same applies to approval, so on a solo repository there is no state a review can carry at all.
+
+The tempting responses are both wrong. **Reporting the failure to the operator** turns a known, permanent property of the platform into a question they have to answer on every review. **Quietly posting a plain PR comment instead** loses the fact that a review happened: it lands in the discussion thread, which is exactly the surface later rounds read for the author's *answers*, so the next review mistakes the report for a reply.
+
+A comment review keeps both: `gh pr review --comment` puts the body in the Reviews section where a review belongs, sets no state, and leaves the Bottom line as the single place the verdict lives. The banner line is not decoration — a reviewer looking at the PR sees no verdict badge, and unless the body says why, the natural reading is that the review declined to judge.
+
+The check belongs before the mode branch because it is not about *who is posting* — present and post mode both hit it — but about *whether a verdict is expressible at all*.
+
 ## Hard constraints
 
 - **Build production assets before the pipeline** — step 2b. Generated definitions are gitignored and stale in a fresh worktree. A red `tsc` caused by stale artifacts is yours to fix: run the build, then re-run the pipeline. Never label it "pre-existing" and never hand it to the review.
@@ -198,6 +209,7 @@ The report names a repository's vulnerabilities: unauthenticated endpoints, inje
 - **Never mention the review process** in the posted comment.
 - **Keep the review constructive** — focus on code, not people.
 - **Never post without approval** — Step 12 always precedes Step 13.
+- **Check the PR author before choosing a verdict** — `gh api user --jq .login` against `gh pr view … --json author`, compared case-insensitively. A match posts a comment review (`--comment`) with the verdict in the Bottom line and a banner saying no state could be set; it never posts `--approve` or `--request-changes`, because GitHub refuses both on your own PR.
 - **Always pass an explicit generous `timeoutMs`** on every child launch.
 - **Shell `timeout` is seconds; context-mode `timeout` and child `timeoutMs` are milliseconds** — a ms figure to the shell is rejected unrun (cap `2147483.647`), a seconds figure to context-mode is killed in ms. Build `900` s / `900000` ms; the pipeline's fix run `1800`–`3600` s / `1800000`–`3600000` ms.
 - **Maximum concurrency for children is 2** — reviewer and oracle, in parallel.

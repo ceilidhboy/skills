@@ -1048,6 +1048,21 @@ If there is a mismatch, fix the report body first, then post.
 
 **A request for changes asks for the tests alongside the fixes it asks for in production code.** Section 7 names each test, its file and its assertion, and step 11.5 fixes the order; say in the review body that the test for a production-code finding comes with the fix, and that a fix landing without one leaves the suite as blind as it was. Prose-only findings need no test — do not pad the review with synthetic ones. Lead the requested-changes section with the tests, then the code changes.
 
+**A self-authored pull request can carry no verdict, so it is posted as a comment review.** GitHub refuses both verdicts on a pull request you authored — `--request-changes` fails with `GraphQL: Review Can not request changes on your own pull request`, and `--approve` fails the same way. This is not an edge case in a solo repository: it is *every* review of the operator's own work, which is most of them.
+
+So the reviewer's identity is checked before either mode posts, and a match posts the report as a **comment review** instead: the same body, in the Reviews section, with no state. The Bottom line still carries the verdict — it is the only place the verdict can live — and a banner line says so, because a reader who sees no verdict state must be told the omission is GitHub's, not the review's.
+
+```bash
+[ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
+REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
+AUTHOR="$(gh pr view <number> --repo <owner/repo> --json author --jq .author.login)"
+VIEWER="$(gh api user --jq .login)"
+lower() { printf '%s' "$1" | tr 'A-Z' 'a-z'; }
+[ "$(lower "$AUTHOR")" = "$(lower "$VIEWER")" ] && echo self-authored || echo reviewer-differs
+```
+
+The check belongs before the mode branch, not inside it, because neither mode can post a verdict and neither should discover that from a failed API call. **A comment review changes only the state, never the obligation:** an APPROVE verdict still requires step 14's issues to exist before it is posted, and a report with warnings still reads as the request for changes it is.
+
 Determine the review state from the report's Bottom line, then post.
 
 **`present` mode** — a human has read it and said post, so the verdict is theirs too:
@@ -1056,12 +1071,24 @@ Determine the review state from the report's Bottom line, then post.
 [ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
 REVIEW_DIR="$XDG_RUNTIME_DIR/pr-review/<owner>-<repo>/<number>"
 REPORT_FILE="$REVIEW_DIR/report.md"
-if grep -q '🟢 \*\*APPROVE\*\*' "$REPORT_FILE"; then
-  REVIEW_STATE="--approve"
+AUTHOR="$(gh pr view <number> --repo <owner/repo> --json author --jq .author.login)"
+VIEWER="$(gh api user --jq .login)"
+
+if [ "$(printf '%s' "$AUTHOR" | tr 'A-Z' 'a-z')" = "$(printf '%s' "$VIEWER" | tr 'A-Z' 'a-z')" ]; then
+  # GitHub refuses a verdict on your own pull request: post the report as a comment
+  # review, with the verdict left in the Bottom line and a banner saying why.
+  POST_FILE="$REVIEW_DIR/comment.md"
+  {
+    printf '%s\n\n' '**Posted as a review comment, not a verdict:** GitHub does not permit an approve or request-changes verdict on a pull request you authored, so this review carries no state. The Bottom line is the verdict.'
+    cat "$REPORT_FILE"
+  } > "$POST_FILE"
+  chmod 600 "$POST_FILE"
+  gh pr review <number> --repo <owner/repo> --comment --body-file "$POST_FILE"
+elif grep -q '🟢 \*\*APPROVE\*\*' "$REPORT_FILE"; then
+  gh pr review <number> --repo <owner/repo> --approve --body-file "$REPORT_FILE"
 else
-  REVIEW_STATE="--request-changes"
+  gh pr review <number> --repo <owner/repo> --request-changes --body-file "$REPORT_FILE"
 fi
-gh pr review <number> --repo <owner/repo> $REVIEW_STATE --body-file "$REPORT_FILE"
 ```
 
 **`post` mode** — a comment, never `--approve` and never `--request-changes`. An automated first pass has not earned a verdict on someone's merge, and a review that blocks a merge with nobody standing behind it is worse than a comment the author can read and judge:
