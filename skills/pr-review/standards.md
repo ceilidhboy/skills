@@ -95,4 +95,11 @@ disposition table and becomes a `Decision` when challenged — or the reverse �
 first time. Correct it explicitly, say which reading was wrong, and restate the counts; do not
 quietly move the item and leave the earlier figure standing.
 
+**The verdict decides where an unfixed finding lives.** On a 🟢 approve verdict nothing stays in
+the report: every finding not fixed inline becomes an issue, assigned to the PR author, before
+the review is delivered (`SKILL.md` step 14). On a 🟡 or 🔴 verdict the PR returns to the author,
+so findings stay in the report and are carried into the follow-up ledger for the next review to
+verify. A note that survives only in an approved review's body is a finding nobody schedules —
+"noted for later" is not a disposition.
+
 This section is a change to this file and is reviewed like code.

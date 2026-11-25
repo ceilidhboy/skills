@@ -945,6 +945,13 @@ Assign **every** finding to exactly one of three buckets, and present each bucke
 
 **The bucket is part of the finding, not a later summary of it.** Every finding carries its bucket from the moment it is raised, and the disposition rules that bind it — "optional" is not a bucket, a remedy that splits gets two, re-bucketing between turns is a defect — are in `standards.md` under **Disposition**. A finding that reaches the disposition table in no bucket, or that changes bucket when challenged, has fallen through a crack the count then hides.
 
+**An unfixed finding has to survive the verdict, and the verdict decides how.** A finding left as a note in the report only reaches anybody if there is a next round in which somebody reads it, so:
+
+- **On a 🟢 approve verdict, nothing may be left over.** A PR recommended for merge has no later round, and the approval is the last thing most readers will look at. Every finding that is not fixed inline becomes a GitHub issue **before the review is delivered** — assigned to the PR author by default — and is referenced from the PR. Step 14 therefore blocks delivery on an approval rather than following it, and a verdict that cannot be issued without leaving findings untracked is downgraded to a request for changes, because that is the state in which a finding may legitimately be carried forward.
+- **On a 🟡 or 🔴 verdict, findings may stay in the report**, because the PR goes back to the author. Each one then has to be writable in two directions: called out plainly for the author in its disposition group, and carried in the follow-up ledger so the next review checks that it was addressed rather than re-deriving it.
+
+There is no third state. "Noted for later" on an approved PR is a finding that disappears.
+
 Lead with the recommended disposition — `Inline fix: 7 (~2h) · Issue: 3 · Decision: 0` — so the operator's default answer is "accept", with per-item overrides. Flag any inline fix estimated over ~30 minutes, touching more than three files, or changing behaviour beyond the finding it fixes, so it can be vetoed individually. The disposition line is also the operator's signal of how much work the review is taking on.
 
 **Do not fix anything yet.** Fixing is the review's recommendation, never its own decision — wait for authorisation.
@@ -958,7 +965,7 @@ An inline fix is still a change, so it is committed and pushed like any other (s
 > Recommended disposition: Inline fix: [N] (~[effort]) · Issue: [M] · Decision: [K]. Want me to fix the inline group now?
 
 Then:
-- **Operator accepts** → Fix the inline findings, commit each, proceed to step 11, then propose the issues for approval (step 14).
+- **Operator accepts** → Fix the inline findings, commit each, proceed to step 11, then settle the outstanding issues (step 14) **before** the review is posted. On an approve verdict they have to exist first, not after — see step 10 and `guide.md`, "Why an approval may not carry notes".
 - **Operator overrides** → Apply the overrides; leave everything not authorised for the author.
 
 **In `post` mode**, there is nobody to authorise anything, so the buckets are structure for the comment and nothing more. State the disposition line as a recommendation — `Recommended disposition: Inline fix: 7 (~2h) · Issue: 3 · Decision: 0` — and never ask. Fixing is off the table (see Mode), so the line reads as advice to the author, not as a question.
@@ -1091,11 +1098,17 @@ Hold the URL it prints as `COMMENT_URL` for the record (step 9.6). **If the post
 
 **Sanitisation matters more here, not less.** In `present` mode a human reading the report is the last check on leaked paths, credentials, internal hostnames and half-finished reasoning. With that check removed, step 8 is load-bearing: no local paths, no artefact paths, no harness or session detail, no credentials, nothing about the machine it ran on.
 
-### 14. Offer to escalate outstanding findings to GitHub issues
+### 14. File the outstanding findings as GitHub issues
 
 **Skip this step entirely in `post` mode.** Creating issues needs an explicit yes and there is nobody to give one, so unfixed findings are named in the comment as follow-ups for the author or the operator to raise.
 
-Propose a GitHub issue for every finding left unfixed once the disposition is settled — whether the review is posted as an approval or as a request for changes — so nothing is lost between rounds. This is the Issue bucket from step 10, presented with a proposed title and assignee: **the PR author by default**, and the operator for administrative or data tasks that need their access. Group only what shares a subsystem or fix class; keep self-contained fixes as their own issue. Check `gh issue list` for duplicates first, present the proposed list, and wait for an explicit yes — never create issues unprompted. Skip documentation-only items and anything another issue tracks.
+**On an approval this step blocks delivery.** Step 10 forbids an approve verdict with untracked findings, so the issues exist *before* the review is posted: propose them, take the yes, create them, link them, and only then post the approval. Filing is part of the review rather than an extra it would be nice to do — a PR about to merge has no later round in which a note can be rescued, and a finding that lives only in a review body is a finding nobody schedules.
+
+**On a request for changes it is still worth doing** for anything genuinely out of scope, but the findings themselves already go back to the author in the report, so nothing is lost by deferring it.
+
+For each finding left unfixed: an issue with a proposed title and assignee — **the PR author by default**, and the operator for administrative or data tasks that need their access. Group only what shares a subsystem or fix class; keep self-contained fixes as their own issue. Never create issues unprompted.
+
+**Look before you file.** A follow-up that belongs inside an issue that already exists — a coverage gap under the issue deciding the approach, say — is a comment on that issue, not a second issue saying the same thing. Tracking it there satisfies the rule; duplicating it does not. Check `gh issue list` for duplicates first, and skip documentation-only items.
 
 Link the created issues from the PR (review bodies are immutable, so links go in a comment):
 
@@ -1104,7 +1117,7 @@ Link the created issues from the PR (review bodies are immutable, so links go in
 gh pr comment <number> --repo <owner/repo> --body "Outstanding follow-ups from the review: #<n> #<n> …"
 ```
 
-Verify the comment is visible on the PR before moving on.
+Read the comment and each issue back before moving on — not the command's exit code. On an approval, an issue that failed to create is the one thing that must not pass silently.
 
 ### 15. Cleanup
 
