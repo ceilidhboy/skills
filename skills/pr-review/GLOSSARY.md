@@ -79,7 +79,10 @@ _Avoid_: disagreement, contradiction, flip-flop, ping-pong
 ### The verdict and the gate
 
 **Verdict**:
-The review's bottom-line judgement, shown as one traffic light.
+The review's bottom-line judgement, shown as one traffic light. On a comment review — a pull request
+the reviewer authored — the green line reads **NO BLOCKERS**, not **APPROVE**: the finding is the same,
+but nobody may approve their own pull request, so the word states what the check found rather than a
+permission the reviewer cannot give.
 _Avoid_: score, rating, grade, result, outcome
 
 **Gate**:

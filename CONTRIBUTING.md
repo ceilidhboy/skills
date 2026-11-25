@@ -14,7 +14,7 @@ Guidelines for adding or updating skills in this repository.
 
 Edit the `SKILL.md` file directly, then run `scripts/link-skills.sh` to update the local symlink. After pushing to GitHub, see [Verification after a GitHub install](#2-verification-after-a-github-install) below.
 
-Where a skill embeds bash an agent runs, its behaviour is tested rather than described: the test reads the blocks out of `SKILL.md` at run time and drives them, so there is one copy of the code. The two that exist are `scripts/test-split-times.sh` and `scripts/test-preflight.sh` (both for `pr-review`); run the relevant one after editing a block, and add a case to it when you add behaviour.
+Where a skill embeds bash an agent runs, its behaviour is tested rather than described: the test reads the blocks out of `SKILL.md` at run time and drives them, so there is one copy of the code. The three that exist are `scripts/test-split-times.sh` and `scripts/test-preflight.sh` (both for `pr-review`) and `scripts/test-verdict-wording.sh` (which drives `pr-review`'s identity check and posting state against a stub `gh`); run the relevant one after editing a block, and add a case to it when you add behaviour.
 
 ## Verification: two-step workflow
 

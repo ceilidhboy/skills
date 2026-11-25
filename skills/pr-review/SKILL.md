@@ -115,10 +115,27 @@ If the owner/repo cannot be determined from the task or the git remote, ask the 
 Fetch the PR's branches **before** any workspace decision. Step 2's "already on the PR branch" check compares the current branch against `headRefName`, so fetching it later makes that check impossible to evaluate — that ordering bug is why an already-checked-out PR branch gets missed.
 
 ```bash
-gh pr view <number> --repo <owner/repo> --json number,title,url,state,headRefName,baseRefName,headRefOid
+gh pr view <number> --repo <owner/repo> --json number,title,url,state,headRefName,baseRefName,headRefOid,author
 ```
 
-Hold `PR_HEAD`, `PR_BASE`, `PR_TITLE` and `PR_HEAD_SHA` for the rest of the workflow. `PR_HEAD_SHA` is
+Decide **who is posting** in the same breath, because a review of a pull request you authored cannot carry
+a verdict and its green Bottom line says `NO BLOCKERS` instead of `APPROVE` (step 6). GitHub refuses both
+verdicts on your own pull request — `GraphQL: Review Can not request changes on your own pull request`,
+and `--approve` the same — so the review goes out as a **comment review** (step 13). An installation token
+has no user identity, so an empty `VIEWER` is never a match: a bot can never be an author.
+
+```bash
+AUTHOR="$(gh pr view <number> --repo <owner/repo> --json author --jq .author.login)"
+VIEWER="$(gh api user --jq .login 2>/dev/null || true)"
+lower() { printf '%s' "$1" | tr 'A-Z' 'a-z'; }
+if [ -n "$VIEWER" ] && [ "$(lower "$AUTHOR")" = "$(lower "$VIEWER")" ]; then
+  echo "REVIEW_IS_SELF=1  author and poster are both $AUTHOR — comment review, green verdict is NO BLOCKERS"
+else
+  echo "REVIEW_IS_SELF=0  author $AUTHOR, poster ${VIEWER:-app-installation}"
+fi
+```
+
+Hold `REVIEW_IS_SELF`, `PR_HEAD`, `PR_BASE`, `PR_TITLE` and `PR_HEAD_SHA` for the rest of the workflow. `PR_HEAD_SHA` is
 the head **this review was asked to review**: the sha the caller recorded when it named one — a queue
 claims an entry at a head, and that head is what the review is for — and `headRefOid` when it named
 none. Substituting the current tip for a recorded sha would review a commit nobody asked about, so a
@@ -746,6 +763,7 @@ Append a **"What's Correct"** appendix collecting every confirmed-correct item i
 - 🟢 **APPROVE** — no blockers, no warnings, fewer than 3 ❔ minors (safe to track as follow-ups)
 - 🟡 **CONSIDER NOT APPROVING** — no hard blockers, but any 🟡 warning or 3+ ❔ minors
 - 🔴 **DO NOT APPROVE** — one or more 🔴 blockers
+- 🟢 **NO BLOCKERS** — the same clean finding, on a pull request the reviewer authored (`REVIEW_IS_SELF=1`): nobody may approve their own pull request, so the green line says what the check found and leaves the merge to another reviewer
 
 Format (exactly one line plus a one-sentence reason):
 
@@ -758,6 +776,20 @@ Format (exactly one line plus a one-sentence reason):
 
 Reason: [one sentence — the single most important factor behind the verdict]
 ```
+
+**When `REVIEW_IS_SELF=1` the green verdict reads `NO BLOCKERS`, never `APPROVE`.** The report is going out as a comment review and cannot carry a verdict, so the word `APPROVE` would claim a permission GitHub refuses — and it is the word a watcher, a merge bot or a hurried reader greps for. The finding is unchanged; only the claim is:
+
+```markdown
+---
+
+## Bottom line
+
+🟢 **NO BLOCKERS** — no blockers, no warnings; only [N] minor nit(s), safe to track as follow-ups. Not an approval: nobody may approve their own pull request, so the merge needs another reviewer.
+
+Reason: [one sentence — the single most important factor behind the verdict]
+```
+
+The yellow and red verdicts keep their wording in both cases: they advise *against* a merge, and advice is exactly what a comment review can give.
 
 ### 7. Check for contradiction reversals
 
@@ -1050,7 +1082,7 @@ If there is a mismatch, fix the report body first, then post.
 
 **A self-authored pull request can carry no verdict, so it is posted as a comment review.** GitHub refuses both verdicts on a pull request you authored — `--request-changes` fails with `GraphQL: Review Can not request changes on your own pull request`, and `--approve` fails the same way. This is not an edge case in a solo repository: it is *every* review of the operator's own work, which is most of them.
 
-So the reviewer's identity is checked before either mode posts, and a match posts the report as a **comment review** instead: the same body, in the Reviews section, with no state. The Bottom line still carries the verdict — it is the only place the verdict can live — and a banner line says so, because a reader who sees no verdict state must be told the omission is GitHub's, not the review's.
+So the reviewer's identity is checked before either mode posts, and a match posts the report as a **comment review** instead: the same body, in the Reviews section, with no state. The Bottom line still carries the finding — its green line reads `NO BLOCKERS` rather than `APPROVE` (step 6), because the reviewer is the author — and a banner line says why the state is absent, because a reader who sees no verdict state must be told the omission is GitHub's, not the review's.
 
 ```bash
 [ -n "${XDG_RUNTIME_DIR:-}" ] || { echo "XDG_RUNTIME_DIR is not set — review artefacts live under it and there is no fallback" >&2; exit 2; }
@@ -1061,7 +1093,7 @@ lower() { printf '%s' "$1" | tr 'A-Z' 'a-z'; }
 [ "$(lower "$AUTHOR")" = "$(lower "$VIEWER")" ] && echo self-authored || echo reviewer-differs
 ```
 
-The check belongs before the mode branch, not inside it, because neither mode can post a verdict and neither should discover that from a failed API call. **A comment review changes only the state, never the obligation:** an APPROVE verdict still requires step 14's issues to exist before it is posted, and a report with warnings still reads as the request for changes it is.
+The check belongs before the mode branch, not inside it, because neither mode can post a verdict and neither should discover that from a failed API call. **A comment review changes only the state, never the obligation:** a green Bottom line still requires step 14's issues to exist before it is posted, and on a self-authored pull request that line reads `NO BLOCKERS`, not `APPROVE`, so nothing downstream can mistake it for permission. A report with warnings still reads as the request for changes it is.
 
 Determine the review state from the report's Bottom line, then post.
 
@@ -1079,7 +1111,7 @@ if [ "$(printf '%s' "$AUTHOR" | tr 'A-Z' 'a-z')" = "$(printf '%s' "$VIEWER" | tr
   # review, with the verdict left in the Bottom line and a banner saying why.
   POST_FILE="$REVIEW_DIR/comment.md"
   {
-    printf '%s\n\n' '**Posted as a review comment, not a verdict:** GitHub does not permit an approve or request-changes verdict on a pull request you authored, so this review carries no state. The Bottom line is the verdict.'
+    printf '%s\n\n' '**Posted as a review comment, not a verdict:** GitHub does not permit an approve or request-changes verdict on a pull request you authored, so this review carries no state. The Bottom line says what the review found; it is not an approval.'
     cat "$REPORT_FILE"
   } > "$POST_FILE"
   chmod 600 "$POST_FILE"

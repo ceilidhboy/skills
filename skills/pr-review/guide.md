@@ -209,7 +209,7 @@ The check belongs before the mode branch because it is not about *who is posting
 - **Never mention the review process** in the posted comment.
 - **Keep the review constructive** — focus on code, not people.
 - **Never post without approval** — Step 12 always precedes Step 13.
-- **Check the PR author before choosing a verdict** — `gh api user --jq .login` against `gh pr view … --json author`, compared case-insensitively. A match posts a comment review (`--comment`) with the verdict in the Bottom line and a banner saying no state could be set; it never posts `--approve` or `--request-changes`, because GitHub refuses both on your own PR.
+- **Check the PR author before choosing a verdict, and let the word match the authority** — `gh api user --jq .login` against `gh pr view … --json author`, compared case-insensitively. A match posts a comment review (`--comment`) with a banner saying no state could be set, and its green Bottom line reads `NO BLOCKERS`, never `APPROVE`: the finding is unchanged, but nobody may approve their own pull request, and `APPROVE` is the word every watcher, merge bot and hurried reader greps for. It never posts `--approve` or `--request-changes`, because GitHub refuses both on your own PR.
 - **Always pass an explicit generous `timeoutMs`** on every child launch.
 - **Shell `timeout` is seconds; context-mode `timeout` and child `timeoutMs` are milliseconds** — a ms figure to the shell is rejected unrun (cap `2147483.647`), a seconds figure to context-mode is killed in ms. Build `900` s / `900000` ms; the pipeline's fix run `1800`–`3600` s / `1800000`–`3600000` ms.
 - **Maximum concurrency for children is 2** — reviewer and oracle, in parallel.
